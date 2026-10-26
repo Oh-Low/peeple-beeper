@@ -220,12 +220,105 @@ static void test_repair_returns(void) {
   pass("repeat pair returns to the menu");
 }
 
+static void step_at(beeper_t *ba, beeper_t *bb, ram_hal_t *ra, ram_hal_t *rb, const hal_t *ha,
+                    const hal_t *hb, uint32_t t) {
+  ra->now_ms = rb->now_ms = 1000 + t;
+  beeper_tick(ba, ha);
+  beeper_tick(bb, hb);
+}
+
+static void test_restart_add_new_ephemeral(void) {
+  ram_hal_t ra, rb;
+  hal_t ha, hb;
+  beeper_t ba, bb;
+  boot_unit(&ba, &ra, &ha, 11, "Ada");
+  boot_unit(&bb, &rb, &hb, 12, "Bea");
+  int fa = 0, fb = 0;
+  air_mesh_t mesh;
+  memset(&mesh, 0, sizeof mesh);
+  air_mesh_add(&mesh, &ra, &fa, NULL);
+  air_mesh_add(&mesh, &rb, &fb, NULL);
+  air_mesh_link(&mesh);
+
+  start_add(&ba, &ha);
+  start_add(&bb, &hb);
+
+  uint32_t t = 0;
+  bool acked = false;
+  for (t = 16; t <= 2000; t += 16) {
+    step_at(&ba, &bb, &ra, &rb, &ha, &hb, t);
+    if (ba.pair.they_have_us && bb.pair.they_have_us && pair_active(&ba.pair) &&
+        pair_active(&bb.pair)) {
+      acked = true;
+      break;
+    }
+  }
+  CHECK(acked, "both sides have hello_ack");
+
+  uint32_t burst_now = ba.pair.last_hello_at + HELLO_PERIOD_MS;
+  while (1000 + t + 32 < burst_now) {
+    t += 16;
+    step_at(&ba, &bb, &ra, &rb, &ha, &hb, t);
+    CHECK(pair_active(&ba.pair) && pair_active(&bb.pair), "handshake still open");
+  }
+  CHECK_EQ(1000 + t + 16, burst_now - 16, "next tick is the one before the burst");
+
+  uint8_t old_eph[EPH_LEN];
+  memcpy(old_eph, bb.pair.our_eph, EPH_LEN);
+  uint8_t id_b[NODE_ID_LEN];
+  identity_get_node_id(&bb.identity, id_b);
+  pair_abort(&bb.pair, &hb);
+  start_add(&bb, &hb);
+  CHECK(pair_active(&bb.pair), "add restarted");
+  CHECK(memcmp(bb.pair.our_eph, old_eph, EPH_LEN) != 0, "restart mints a new ephemeral");
+  uint8_t id_now[NODE_ID_LEN];
+  identity_get_node_id(&bb.identity, id_now);
+  CHECK(node_id_equal(id_b, id_now), "node id unchanged");
+  CHECK(!bb.pair.they_have_us, "restart clears the local flag");
+
+  t += 16;
+  step_at(&ba, &bb, &ra, &rb, &ha, &hb, t);
+  CHECK(pair_active(&bb.pair), "new hello is on the air");
+  CHECK(!pair_error(&bb.pair), "no error before the peer burst");
+
+  t += 16;
+  step_at(&ba, &bb, &ra, &rb, &ha, &hb, t);
+  const char *err_b = pair_error(&bb.pair);
+  CHECK(!err_b || strcmp(err_b, "try again") != 0, "peer burst does not abort the restart");
+  CHECK(pair_active(&bb.pair), "restart survives the peer burst");
+  CHECK(ba.pair.has_pending && memcmp(ba.pair.pending.hello.eph, bb.pair.our_eph, EPH_LEN) == 0,
+        "peer took the new hello");
+  CHECK(!ba.pair.they_have_us, "new ephemeral drops the old ack");
+
+  bool finished = false;
+  for (t += 16; t <= 20000; t += 16) {
+    step_at(&ba, &bb, &ra, &rb, &ha, &hb, t);
+    err_b = pair_error(&bb.pair);
+    CHECK(!err_b || strcmp(err_b, "try again") != 0, "later burst does not abort the restart");
+    if (!pair_active(&ba.pair) && !pair_active(&bb.pair)) {
+      finished = true;
+      break;
+    }
+  }
+  CHECK(finished, "new handshake finishes");
+  CHECK(!pair_error(&ba.pair) && !pair_error(&bb.pair), "restarted add has no error");
+  CHECK(ba.pager.screen == SCREEN_PEEPLE && bb.pager.screen == SCREEN_PEEPLE, "both leave add");
+  const contact_t *ab = contacts_find_by_id(&ba.contacts, id_b);
+  uint8_t id_a[NODE_ID_LEN];
+  identity_get_node_id(&ba.identity, id_a);
+  const contact_t *row = contacts_find_by_id(&bb.contacts, id_a);
+  CHECK(ab && row, "contacts stored");
+  CHECK(memcmp(ab->session_key, row->session_key, SESSION_KEY_LEN) == 0, "keys match");
+  pass("restart add with a new ephemeral still pairs");
+}
+
 int main(void) {
   test_falloff();
   test_mesh_hear();
   test_directory();
   test_introduce_forget();
   test_repair_returns();
+  test_restart_add_new_ephemeral();
   printf("%d passed, %d failed\n", g_pass, g_fail);
   return g_fail ? 1 : 0;
 }

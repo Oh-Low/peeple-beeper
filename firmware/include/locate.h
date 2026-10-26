@@ -4,13 +4,13 @@
 #include "frames.h"
 #include "hal.h"
 #include "identity.h"
+#include "relay.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 
 #define LOCATE_ATTEMPTS 4
 #define LOCATE_RETRY_MS 2000
-#define LOCATE_SEEN_MAX 24
 /* Wake the receiver on this period and listen this long for one fix. */
 #define GPS_SAMPLE_PERIOD_MS (30u * 60u * 1000u)
 #define GPS_LISTEN_MS (60u * 1000u)
@@ -19,6 +19,7 @@
 /* After Allow, that contact is answered without another prompt. */
 #define TRACK_ALLOW_MS (30u * 60u * 1000u)
 #define TRACK_GRANT_MAX 8
+#define TRACK_ASK_MAX 8
 
 struct page_radio;
 
@@ -32,16 +33,6 @@ typedef enum {
   LOCATE_NO_REPLY,
   LOCATE_DENIED,
 } locate_status_t;
-
-typedef struct {
-  int kind;
-  uint8_t src_id[NODE_ID_LEN];
-  uint8_t nonce[PAGE_NONCE_LEN];
-  uint8_t pending[RAW_FRAME_MAX];
-  uint8_t pending_len;
-  bool has_pending;
-  uint32_t pending_at;
-} locate_seen_t;
 
 struct locate_radio {
   locate_status_t status;
@@ -65,13 +56,17 @@ struct locate_radio {
   bool gps_listening;
   uint32_t gps_listen_at;
   uint32_t gps_next_on;
-  locate_seen_t seen[LOCATE_SEEN_MAX];
-  int seen_n;
+  relay_cache_t relay;
   /* Tests start open. A device with no saved setting asks before it answers. */
   bool track_open;
   bool ask_pending;
   uint8_t ask_id[NODE_ID_LEN];
   uint8_t ask_nonce[PAGE_NONCE_LEN];
+  struct {
+    uint8_t id[NODE_ID_LEN];
+    uint8_t nonce[PAGE_NONCE_LEN];
+  } ask_wait[TRACK_ASK_MAX];
+  int ask_wait_n;
   bool tracked_note;
   uint8_t tracked_id[NODE_ID_LEN];
   uint32_t tracked_quiet;

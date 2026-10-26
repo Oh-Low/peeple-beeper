@@ -5,6 +5,7 @@
 #include "hal.h"
 #include "identity.h"
 #include "locate.h"
+#include "relay.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -34,16 +35,6 @@ typedef struct {
 } page_outbox_t;
 
 typedef struct {
-  int kind;
-  uint8_t src_id[NODE_ID_LEN];
-  uint8_t nonce[PAGE_NONCE_LEN];
-  uint8_t pending[RAW_FRAME_MAX];
-  uint8_t pending_len;
-  bool has_pending;
-  uint32_t pending_at;
-} page_seen_t;
-
-typedef struct {
   uint8_t src_id[NODE_ID_LEN];
   uint8_t msg_id[PAGE_MSG_ID_LEN];
 } page_delivered_t;
@@ -57,8 +48,7 @@ typedef struct page_radio {
   char body[PAGE_BODY_MAX + 1];
   /* Mascot sealed into this send. Retries keep the index from page_tx. */
   uint8_t send_beeple;
-  page_seen_t seen[PAGE_SEEN_MAX];
-  int seen_n;
+  relay_cache_t relay;
   page_delivered_t delivered[PAGE_SEEN_MAX];
   int delivered_n;
 } page_radio_t;

@@ -83,7 +83,9 @@ static void pair_on_hello(pair_session_t *session, identity_store_t *identity, c
   identity_get_node_id(identity, us);
   if (node_id_equal(hello->node_id, us)) return;
 
-  if (session->has_pending && !node_id_equal(hello->node_id, session->pending.hello.node_id)) {
+  if (session->has_pending &&
+      (!node_id_equal(hello->node_id, session->pending.hello.node_id) ||
+       !pair_bytes_eq(hello->eph, EPH_LEN, session->pending.hello.eph, EPH_LEN))) {
     session->they_have_us = false;
   }
 
@@ -214,10 +216,7 @@ void pair_tick(pair_session_t *session, identity_store_t *identity, contact_book
     return;
   }
 
-  if (!session->hello_sent || elapsed_u32(now, session->last_hello_at) >= HELLO_PERIOD_MS) {
-    pair_broadcast(session, identity, hal);
-  }
-
+  /* A queued HELLO can retire they_have_us. Read it before this burst sends LEAVE. */
   raw_frame_t incoming;
   memset(&incoming, 0, sizeof incoming);
   while (hal->radio_poll_raw(hal->ctx, &incoming)) {
@@ -243,6 +242,11 @@ void pair_tick(pair_session_t *session, identity_store_t *identity, contact_book
         pair_on_leave(session, identity, contacts, hal, &leave);
       }
     }
+  }
+
+  if (!session->active) return;
+  if (!session->hello_sent || elapsed_u32(now, session->last_hello_at) >= HELLO_PERIOD_MS) {
+    pair_broadcast(session, identity, hal);
   }
 }
 

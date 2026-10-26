@@ -8,9 +8,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#define RELAY_JITTER_MIN_MS 80
-#define RELAY_JITTER_MAX_MS 400
-
 void locate_init(locate_radio_t *loc) {
   memset(loc, 0, sizeof *loc);
   loc->status = LOCATE_IDLE;
@@ -42,70 +39,6 @@ static bool nonce_used(const locate_radio_t *loc, const uint8_t *nonce) {
     if (bytes_eq_n(loc->nonces[i], nonce, PAGE_NONCE_LEN)) return true;
   }
   return false;
-}
-
-static locate_seen_t *seen_find(locate_radio_t *loc, int kind, const uint8_t *src_id,
-                               const uint8_t *nonce) {
-  for (int i = 0; i < loc->seen_n; i++) {
-    locate_seen_t *e = &loc->seen[i];
-    if (e->kind == kind && node_id_equal(e->src_id, src_id) &&
-        bytes_eq_n(e->nonce, nonce, PAGE_NONCE_LEN)) {
-      return e;
-    }
-  }
-  return NULL;
-}
-
-static locate_seen_t *seen_insert(locate_radio_t *loc, int kind, const uint8_t *src_id,
-                                 const uint8_t *nonce) {
-  if (loc->seen_n >= LOCATE_SEEN_MAX) {
-    memmove(&loc->seen[0], &loc->seen[1], (size_t)(LOCATE_SEEN_MAX - 1) * sizeof(locate_seen_t));
-    loc->seen_n = LOCATE_SEEN_MAX - 1;
-  }
-  locate_seen_t *e = &loc->seen[loc->seen_n++];
-  memset(e, 0, sizeof *e);
-  e->kind = kind;
-  memcpy(e->src_id, src_id, NODE_ID_LEN);
-  memcpy(e->nonce, nonce, PAGE_NONCE_LEN);
-  return e;
-}
-
-static locate_seen_t *mark_seen(locate_radio_t *loc, int kind, const uint8_t *src_id,
-                               const uint8_t *nonce) {
-  locate_seen_t *e = seen_find(loc, kind, src_id, nonce);
-  return e ? e : seen_insert(loc, kind, src_id, nonce);
-}
-
-static uint32_t relay_jitter_ms(const hal_t *hal) {
-  uint8_t r[2];
-  hal->random_fill(hal->ctx, r, 2);
-  uint32_t u = ((uint32_t)r[0] << 8) | r[1];
-  uint32_t span = RELAY_JITTER_MAX_MS - RELAY_JITTER_MIN_MS;
-  return RELAY_JITTER_MIN_MS + (u % (span + 1));
-}
-
-static uint32_t relay_deadline(const hal_t *hal) {
-  return hal->now_ms(hal->ctx) + relay_jitter_ms(hal);
-}
-
-static void arm_relay(locate_seen_t *entry, const hal_t *hal, uint8_t hop_ttl, const uint8_t *bytes,
-                      size_t len) {
-  if (hop_ttl <= 1) return;
-  if (len > RAW_FRAME_MAX) len = RAW_FRAME_MAX;
-  memcpy(entry->pending, bytes, len);
-  entry->pending_len = (uint8_t)len;
-  if (!frame_set_hop_ttl(entry->pending, len, (uint8_t)(hop_ttl - 1))) {
-    entry->has_pending = false;
-    entry->pending_len = 0;
-    return;
-  }
-  entry->has_pending = true;
-  entry->pending_at = relay_deadline(hal);
-}
-
-static void reroll_pending(locate_seen_t *entry, const hal_t *hal) {
-  if (!entry->has_pending) return;
-  entry->pending_at = relay_deadline(hal);
 }
 
 static void put_i32le(uint8_t *p, int32_t v) {
@@ -176,39 +109,8 @@ static void send_loc(locate_radio_t *loc, const hal_t *hal, identity_store_t *id
   uint8_t frame[RAW_FRAME_MAX];
   size_t n = frame_encode_loc(&p, frame, sizeof frame);
   if (!n) return;
-  mark_seen(loc, FRAME_LOC, us, nonce);
+  relay_mark_seen(&loc->relay, FRAME_LOC, us, nonce);
   hal->radio_send_raw(hal->ctx, frame, n);
-}
-
-static void consider_req_relay(locate_radio_t *loc, const hal_t *hal, const loc_req_payload_t *req,
-                               const uint8_t *bytes, size_t len) {
-  if (seen_find(loc, FRAME_LOC, req->dest_id, req->nonce)) {
-    mark_seen(loc, FRAME_LOC_REQ, req->src_id, req->nonce);
-    return;
-  }
-  locate_seen_t *existing = seen_find(loc, FRAME_LOC_REQ, req->src_id, req->nonce);
-  if (existing) {
-    reroll_pending(existing, hal);
-    return;
-  }
-  locate_seen_t *entry = seen_insert(loc, FRAME_LOC_REQ, req->src_id, req->nonce);
-  arm_relay(entry, hal, req->hop_ttl, bytes, len);
-}
-
-static void consider_loc_relay(locate_radio_t *loc, const hal_t *hal, const loc_payload_t *p,
-                               const uint8_t *bytes, size_t len) {
-  locate_seen_t *pending = seen_find(loc, FRAME_LOC_REQ, p->dest_id, p->nonce);
-  if (pending) {
-    pending->has_pending = false;
-    pending->pending_len = 0;
-  }
-  locate_seen_t *existing = seen_find(loc, FRAME_LOC, p->src_id, p->nonce);
-  if (existing) {
-    reroll_pending(existing, hal);
-    return;
-  }
-  locate_seen_t *entry = seen_insert(loc, FRAME_LOC, p->src_id, p->nonce);
-  arm_relay(entry, hal, p->hop_ttl, bytes, len);
 }
 
 static void note_tracked(locate_radio_t *loc, const hal_t *hal, const uint8_t *src) {
@@ -260,6 +162,47 @@ static void grant_remember(locate_radio_t *loc, const uint8_t *id, uint32_t now)
   loc->grant[slot].until = now + TRACK_ALLOW_MS;
 }
 
+static int ask_wait_slot(const locate_radio_t *loc, const uint8_t *id) {
+  for (int i = 0; i < loc->ask_wait_n; i++) {
+    if (node_id_equal(loc->ask_wait[i].id, id)) return i;
+  }
+  return -1;
+}
+
+static void promote_ask(locate_radio_t *loc) {
+  if (loc->ask_wait_n <= 0) {
+    loc->ask_pending = false;
+    return;
+  }
+  memcpy(loc->ask_id, loc->ask_wait[0].id, NODE_ID_LEN);
+  memcpy(loc->ask_nonce, loc->ask_wait[0].nonce, PAGE_NONCE_LEN);
+  loc->ask_pending = true;
+  loc->ask_wait_n--;
+  memmove(&loc->ask_wait[0], &loc->ask_wait[1], (size_t)loc->ask_wait_n * sizeof loc->ask_wait[0]);
+}
+
+static void hold_ask(locate_radio_t *loc, const uint8_t *id, const uint8_t *nonce) {
+  if (loc->ask_pending && node_id_equal(loc->ask_id, id)) {
+    memcpy(loc->ask_nonce, nonce, PAGE_NONCE_LEN);
+    return;
+  }
+  int slot = ask_wait_slot(loc, id);
+  if (slot >= 0) {
+    memcpy(loc->ask_wait[slot].nonce, nonce, PAGE_NONCE_LEN);
+    return;
+  }
+  if (!loc->ask_pending) {
+    memcpy(loc->ask_id, id, NODE_ID_LEN);
+    memcpy(loc->ask_nonce, nonce, PAGE_NONCE_LEN);
+    loc->ask_pending = true;
+    return;
+  }
+  if (loc->ask_wait_n >= TRACK_ASK_MAX) return;
+  memcpy(loc->ask_wait[loc->ask_wait_n].id, id, NODE_ID_LEN);
+  memcpy(loc->ask_wait[loc->ask_wait_n].nonce, nonce, PAGE_NONCE_LEN);
+  loc->ask_wait_n++;
+}
+
 static void answer_req(locate_radio_t *loc, identity_store_t *identity, contact_book_t *contacts,
                        const hal_t *hal, const loc_req_payload_t *req) {
   const contact_t *contact = contacts_find_by_id(contacts, req->src_id);
@@ -267,9 +210,7 @@ static void answer_req(locate_radio_t *loc, identity_store_t *identity, contact_
   if (!loc_req_check(contact->session_key, req->nonce, req->mac)) return;
   uint32_t now = hal->now_ms(hal->ctx);
   if (!loc->track_open && !grant_live(loc, req->src_id, now)) {
-    memcpy(loc->ask_id, req->src_id, NODE_ID_LEN);
-    memcpy(loc->ask_nonce, req->nonce, PAGE_NONCE_LEN);
-    loc->ask_pending = true;
+    hold_ask(loc, req->src_id, req->nonce);
     return;
   }
   send_loc(loc, hal, identity, req->src_id, req->nonce, contact->session_key, false);
@@ -326,7 +267,8 @@ void locate_on_raw(locate_radio_t *loc, identity_store_t *identity, contact_book
       return;
     }
     if (node_id_equal(req.src_id, us)) return;
-    consider_req_relay(loc, hal, &req, raw->bytes, raw->len);
+    relay_on_request(&loc->relay, hal, FRAME_LOC_REQ, FRAME_LOC, req.src_id, req.dest_id, req.nonce,
+                     req.hop_ttl, raw->bytes, raw->len);
     return;
   }
 
@@ -338,7 +280,8 @@ void locate_on_raw(locate_radio_t *loc, identity_store_t *identity, contact_book
       return;
     }
     if (node_id_equal(p.src_id, us)) return;
-    consider_loc_relay(loc, hal, &p, raw->bytes, raw->len);
+    relay_on_reply(&loc->relay, hal, FRAME_LOC_REQ, FRAME_LOC, p.src_id, p.dest_id, p.nonce,
+                   p.hop_ttl, raw->bytes, raw->len);
   }
 }
 
@@ -364,7 +307,7 @@ static bool tx_attempt(locate_radio_t *loc, const hal_t *hal, identity_store_t *
     memcpy(loc->nonces[loc->nonce_n], nonce, PAGE_NONCE_LEN);
     loc->nonce_n++;
   }
-  mark_seen(loc, FRAME_LOC_REQ, us, nonce);
+  relay_mark_seen(&loc->relay, FRAME_LOC_REQ, us, nonce);
   hal->radio_send_raw(hal->ctx, frame, n);
   return true;
 }
@@ -430,18 +373,6 @@ static void outbox_tick(locate_radio_t *loc, identity_store_t *identity, contact
   loc->next_at = now + LOCATE_RETRY_MS;
 }
 
-static void relay_tick(locate_radio_t *loc, const hal_t *hal) {
-  uint32_t now = hal->now_ms(hal->ctx);
-  for (int i = 0; i < loc->seen_n; i++) {
-    locate_seen_t *e = &loc->seen[i];
-    if (!e->has_pending) continue;
-    if (!time_reached(now, e->pending_at)) continue;
-    hal->radio_send_raw(hal->ctx, e->pending, e->pending_len);
-    e->has_pending = false;
-    e->pending_len = 0;
-  }
-}
-
 static void gps_power(const hal_t *hal, bool on) {
   if (hal && hal->gps_power) hal->gps_power(hal->ctx, on);
 }
@@ -492,7 +423,7 @@ void locate_tick(locate_radio_t *loc, identity_store_t *identity, contact_book_t
                  const hal_t *hal) {
   if (!loc) return;
   outbox_tick(loc, identity, contacts, hal);
-  relay_tick(loc, hal);
+  relay_tick(&loc->relay, hal);
 }
 
 void locate_set_open(locate_radio_t *loc, bool open) {
@@ -518,7 +449,7 @@ static bool answer_pending(locate_radio_t *loc, const hal_t *hal, identity_store
   uint8_t nonce[PAGE_NONCE_LEN];
   memcpy(id, loc->ask_id, NODE_ID_LEN);
   memcpy(nonce, loc->ask_nonce, PAGE_NONCE_LEN);
-  loc->ask_pending = false;
+  promote_ask(loc);
   if (!contact) return false;
   send_loc(loc, hal, identity, id, nonce, contact->session_key, deny);
   if (!deny) grant_remember(loc, id, hal->now_ms(hal->ctx));

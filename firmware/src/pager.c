@@ -1547,6 +1547,12 @@ bool pager_poll_track(pager_t *pager, const hal_t *hal) {
     pager->sel = 1;
     hal->vibe(hal->ctx, 250);
     hal->beep(hal->ctx, 80);
+    for (;;) {
+      if (hal->encoder_poll(hal->ctx) == ENC_NONE) break;
+    }
+    for (;;) {
+      if (!hal->back_poll(hal->ctx)) break;
+    }
     return true;
   }
   if (!locate_tracked(pager->locate)) return false;

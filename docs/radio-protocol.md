@@ -223,7 +223,7 @@ sequenceDiagram
 ```
 
 1. Both units enter Add-contact. Whisper on. Fresh 32-byte `eph` and 8-byte HELLO nonce. Start broadcasting HELLO (plus vibe 80 ms on start).
-2. Hear a foreign HELLO at **≥ −45 dBm** → remember that peer (one pending HELLO; a different sender replaces it and clears `they_have_us`) and send HELLO_ACK.
+2. Hear a foreign HELLO at **≥ −45 dBm** → remember that peer (one pending HELLO; a different sender, or the same sender with a new ephemeral, replaces it and clears `they_have_us`; the same ephemeral keeps the flag) and send HELLO_ACK.
 3. Hear HELLO_ACK whose `dest` is us, `src` is the pending peer, and `confirm` matches → they have our HELLO (`they_have_us`).
 4. Once we have a pending peer **and** they have us, each 400 ms burst is HELLO + HELLO_ACK + PAIR_LEAVE.
 5. Hear a matching PAIR_LEAVE → send LEAVE, **commit** (derive session key, `contacts_upsert`), whisper off, vibe 200 ms, done.

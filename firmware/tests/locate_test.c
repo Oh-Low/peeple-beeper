@@ -8,6 +8,7 @@
 #include "nmea.h"
 #include "nrf_hal.h"
 #include "page.h"
+#include "pager.h"
 #include "util.h"
 
 #include <stdio.h>
@@ -680,6 +681,101 @@ static void test_track_consent(void) {
   pass("tracking asks, denies, and warns when open");
 }
 
+static void test_track_ask_queue(void) {
+  unit_t a, b, c;
+  make_unit(&a, 1);
+  make_unit(&b, 2);
+  make_unit(&c, 3);
+  pair_books(&a, &b, "Ada", "Bea");
+  pair_books(&c, &b, "Cy", "Bea");
+  set_grid(&b, 75, 0);
+  locate_set_open(&b.locate, false);
+  uint8_t dest[NODE_ID_LEN];
+  id_byte(dest, 2);
+
+  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "Ada asks");
+  exchange(&a, &b);
+  CHECK(locate_tx(&c.locate, &c.radio, &c.hal, dest, &c.identity, &c.contacts), "Cy asks");
+  exchange(&c, &b);
+  uint8_t id[NODE_ID_LEN];
+  CHECK(locate_ask_id(&b.locate, id), "prompt waiting");
+  CHECK(node_id_equal(id, a.identity.node_id), "prompt is Ada");
+
+  a.ram.now_ms = LOCATE_RETRY_MS;
+  tick(&a);
+  exchange(&a, &b);
+  c.ram.now_ms = LOCATE_RETRY_MS;
+  tick(&c);
+  exchange(&c, &b);
+  CHECK_EQ(b.tx.n, 0, "retries stay held");
+  CHECK(locate_ask_id(&b.locate, id), "prompt still waiting");
+  CHECK(node_id_equal(id, a.identity.node_id), "retry leaves Ada on screen");
+
+  CHECK(locate_allow(&b.locate, &b.hal, &b.identity, &b.contacts), "allow Ada");
+  CHECK_EQ(b.tx.n, 1, "one reply");
+  loc_payload_t sent;
+  CHECK(frame_decode_loc(b.tx.frames[0], b.tx.lens[0], &sent), "decode Ada's reply");
+  CHECK(node_id_equal(sent.dest_id, a.identity.node_id), "reply addressed to Ada");
+  CHECK(bytes_eq_n(sent.nonce, a.locate.nonces[a.locate.nonce_n - 1], PAGE_NONCE_LEN),
+        "reply uses Ada's latest nonce");
+  exchange(&b, &a);
+  CHECK_EQ(a.locate.status, LOCATE_FOUND, "Ada got the fix");
+  CHECK_EQ(c.locate.status, LOCATE_SENDING, "Cy still waiting on a fix");
+
+  CHECK(locate_ask_pending(&b.locate), "Cy is next");
+  CHECK(locate_ask_id(&b.locate, id), "second prompt");
+  CHECK(node_id_equal(id, c.identity.node_id), "prompt is Cy");
+  CHECK(locate_deny(&b.locate, &b.hal, &b.identity, &b.contacts), "deny Cy");
+  CHECK_EQ(b.tx.n, 1, "one deny");
+  CHECK(frame_decode_loc(b.tx.frames[0], b.tx.lens[0], &sent), "decode Cy's reply");
+  CHECK(node_id_equal(sent.dest_id, c.identity.node_id), "deny addressed to Cy");
+  CHECK(bytes_eq_n(sent.nonce, c.locate.nonces[c.locate.nonce_n - 1], PAGE_NONCE_LEN),
+        "deny uses Cy's latest nonce");
+  exchange(&b, &c);
+  CHECK_EQ(c.locate.status, LOCATE_DENIED, "Cy was denied");
+  CHECK(!locate_ask_pending(&b.locate), "no one left waiting");
+  pass("a second tracking request waits until the first is answered");
+}
+
+static void test_track_prompt_drops_queued_input(void) {
+  unit_t a, b;
+  make_unit(&a, 1);
+  make_unit(&b, 2);
+  pair_books(&a, &b, "Ada", "Bea");
+  locate_set_open(&b.locate, false);
+  uint8_t dest[NODE_ID_LEN];
+  id_byte(dest, 2);
+  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "Ada asks");
+  exchange(&a, &b);
+  CHECK(locate_ask_pending(&b.locate), "pending before the screen");
+
+  pair_session_t pair;
+  pair_init(&pair);
+  pager_t pager;
+  pager_init(&pager, &b.identity, &b.contacts, &pair, &b.radio, &b.locate);
+  ram_hal_push_encoder(&b.ram, ENC_PRESS);
+  ram_hal_push_back(&b.ram);
+  CHECK(pager_poll_track(&pager, &b.hal), "prompt takes the screen");
+  CHECK_EQ(pager.screen, SCREEN_TRACKASK, "track ask screen");
+  CHECK_EQ(b.ram.enc_n, 0, "encoder drained");
+  CHECK_EQ(b.ram.back_n, 0, "back drained");
+  pager_input(&pager, &b.hal);
+  CHECK(locate_ask_pending(&b.locate), "queued press is not the answer");
+  CHECK_EQ(pager.screen, SCREEN_TRACKASK, "prompt stays up");
+
+  ram_hal_push_encoder(&b.ram, ENC_PRESS);
+  CHECK(!pager_poll_track(&pager, &b.hal), "prompt already up");
+  CHECK_EQ(b.ram.enc_n, 1, "later press stays queued");
+  pager_input(&pager, &b.hal);
+  CHECK(!locate_ask_pending(&b.locate), "press on the prompt answers");
+  CHECK_EQ(pager.screen, SCREEN_MENU, "answer leaves the prompt");
+  uint8_t flags = 0;
+  CHECK_EQ(b.tx.n, 1, "one reply");
+  CHECK(loc_flags(b.tx.frames[0], b.tx.lens[0], &flags), "open the reply");
+  CHECK((flags & LOC_FLAG_DENY) != 0, "default press denies");
+  pass("input queued before the tracking prompt is not the answer");
+}
+
 int main(void) {
   test_grid_quantization();
   test_nmea();
@@ -695,6 +791,8 @@ int main(void) {
   test_gps_sample();
   test_capture_after_move();
   test_track_consent();
+  test_track_ask_queue();
+  test_track_prompt_drops_queued_input();
   if (g_fail) {
     printf("%d failed, %d passed\n", g_fail, g_pass);
     return 1;

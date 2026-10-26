@@ -6,9 +6,6 @@
 
 #include <string.h>
 
-#define RELAY_JITTER_MIN_MS 80
-#define RELAY_JITTER_MAX_MS 400
-
 void page_radio_init(page_radio_t *radio) {
   memset(radio, 0, sizeof *radio);
   radio->status = PAGE_IDLE;
@@ -79,105 +76,6 @@ static uint32_t wait_after_attempt(int attempts) {
   return PAGE_RETRY_SLOW_MS;
 }
 
-static uint32_t relay_jitter_ms(const hal_t *hal) {
-  uint8_t r[2];
-  hal->random_fill(hal->ctx, r, 2);
-  uint32_t u = ((uint32_t)r[0] << 8) | r[1];
-  uint32_t span = RELAY_JITTER_MAX_MS - RELAY_JITTER_MIN_MS;
-  return RELAY_JITTER_MIN_MS + (u % (span + 1));
-}
-
-static page_seen_t *seen_find(page_radio_t *radio, int kind, const uint8_t *src_id,
-                             const uint8_t *nonce) {
-  for (int i = 0; i < radio->seen_n; i++) {
-    page_seen_t *e = &radio->seen[i];
-    if (e->kind == kind && node_id_equal(e->src_id, src_id) &&
-        bytes_eq_n(e->nonce, nonce, PAGE_NONCE_LEN)) {
-      return e;
-    }
-  }
-  return NULL;
-}
-
-static page_seen_t *seen_insert(page_radio_t *radio, int kind, const uint8_t *src_id,
-                               const uint8_t *nonce) {
-  if (radio->seen_n >= PAGE_SEEN_MAX) {
-    memmove(&radio->seen[0], &radio->seen[1], (size_t)(PAGE_SEEN_MAX - 1) * sizeof(page_seen_t));
-    radio->seen_n = PAGE_SEEN_MAX - 1;
-  }
-  page_seen_t *e = &radio->seen[radio->seen_n++];
-  memset(e, 0, sizeof *e);
-  e->kind = kind;
-  memcpy(e->src_id, src_id, NODE_ID_LEN);
-  memcpy(e->nonce, nonce, PAGE_NONCE_LEN);
-  return e;
-}
-
-static page_seen_t *mark_seen(page_radio_t *radio, int kind, const uint8_t *src_id,
-                             const uint8_t *nonce) {
-  page_seen_t *e = seen_find(radio, kind, src_id, nonce);
-  return e ? e : seen_insert(radio, kind, src_id, nonce);
-}
-
-static uint32_t relay_deadline(const hal_t *hal) {
-  return hal->now_ms(hal->ctx) + relay_jitter_ms(hal);
-}
-
-static void arm_relay(page_seen_t *entry, const hal_t *hal, uint8_t hop_ttl, const uint8_t *bytes,
-                      size_t len) {
-  if (hop_ttl <= 1) return;
-  if (len > RAW_FRAME_MAX) len = RAW_FRAME_MAX;
-  memcpy(entry->pending, bytes, len);
-  entry->pending_len = (uint8_t)len;
-  if (!frame_set_hop_ttl(entry->pending, len, (uint8_t)(hop_ttl - 1))) {
-    entry->has_pending = false;
-    entry->pending_len = 0;
-    return;
-  }
-  entry->has_pending = true;
-  entry->pending_at = relay_deadline(hal);
-}
-
-static void reroll_pending(page_seen_t *entry, const hal_t *hal) {
-  if (!entry->has_pending) return;
-  entry->pending_at = relay_deadline(hal);
-}
-
-static void cancel_pending_page_for_ack(page_radio_t *radio, const page_ack_payload_t *ack) {
-  page_seen_t *existing = seen_find(radio, FRAME_PAGE, ack->dest_id, ack->nonce);
-  if (existing) {
-    existing->has_pending = false;
-    existing->pending_len = 0;
-  }
-}
-
-static void consider_page_relay(page_radio_t *radio, const hal_t *hal, const page_payload_t *p,
-                                const uint8_t *bytes, size_t len) {
-  if (seen_find(radio, FRAME_PAGE_ACK, p->dest_id, p->nonce)) {
-    mark_seen(radio, FRAME_PAGE, p->src_id, p->nonce);
-    return;
-  }
-  page_seen_t *existing = seen_find(radio, FRAME_PAGE, p->src_id, p->nonce);
-  if (existing) {
-    reroll_pending(existing, hal);
-    return;
-  }
-  page_seen_t *entry = seen_insert(radio, FRAME_PAGE, p->src_id, p->nonce);
-  arm_relay(entry, hal, p->hop_ttl, bytes, len);
-}
-
-static void consider_ack_relay(page_radio_t *radio, const hal_t *hal, const page_ack_payload_t *ack,
-                               const uint8_t *bytes, size_t len) {
-  cancel_pending_page_for_ack(radio, ack);
-  page_seen_t *existing = seen_find(radio, FRAME_PAGE_ACK, ack->src_id, ack->nonce);
-  if (existing) {
-    reroll_pending(existing, hal);
-    return;
-  }
-  page_seen_t *entry = seen_insert(radio, FRAME_PAGE_ACK, ack->src_id, ack->nonce);
-  arm_relay(entry, hal, ack->hop_ttl, bytes, len);
-}
-
 static void send_page_ack(page_radio_t *radio, const hal_t *hal, identity_store_t *identity,
                           const uint8_t *dest_id, const uint8_t *nonce, const uint8_t *session_key) {
   uint8_t us[NODE_ID_LEN];
@@ -192,7 +90,7 @@ static void send_page_ack(page_radio_t *radio, const hal_t *hal, identity_store_
   uint8_t frame[PAGE_ACK_LEN];
   size_t n = frame_encode_page_ack(&ack, frame, sizeof frame);
   if (!n) return;
-  mark_seen(radio, FRAME_PAGE_ACK, us, nonce);
+  relay_mark_seen(&radio->relay, FRAME_PAGE_ACK, us, nonce);
   hal->radio_send_raw(hal->ctx, frame, n);
 }
 
@@ -269,7 +167,8 @@ static void on_raw_frame(page_radio_t *radio, identity_store_t *identity, contac
       return;
     }
     if (node_id_equal(p.src_id, us)) return;
-    consider_page_relay(radio, hal, &p, raw->bytes, raw->len);
+    relay_on_request(&radio->relay, hal, FRAME_PAGE, FRAME_PAGE_ACK, p.src_id, p.dest_id, p.nonce,
+                     p.hop_ttl, raw->bytes, raw->len);
     return;
   }
 
@@ -280,7 +179,8 @@ static void on_raw_frame(page_radio_t *radio, identity_store_t *identity, contac
       try_outbox_ack(radio, identity, contacts, &ack);
       return;
     }
-    consider_ack_relay(radio, hal, &ack, raw->bytes, raw->len);
+    relay_on_reply(&radio->relay, hal, FRAME_PAGE, FRAME_PAGE_ACK, ack.src_id, ack.dest_id,
+                   ack.nonce, ack.hop_ttl, raw->bytes, raw->len);
   }
 }
 
@@ -324,7 +224,7 @@ static bool tx_attempt(page_radio_t *radio, const hal_t *hal, identity_store_t *
     memcpy(box->nonces[box->nonce_n], nonce, PAGE_NONCE_LEN);
     box->nonce_n++;
   }
-  mark_seen(radio, FRAME_PAGE, us, nonce);
+  relay_mark_seen(&radio->relay, FRAME_PAGE, us, nonce);
   hal->radio_send_raw(hal->ctx, frame, n);
   return true;
 }
@@ -350,18 +250,6 @@ static void outbox_tick(page_radio_t *radio, identity_store_t *identity, contact
   }
   box->attempts += 1;
   box->next_at = now + wait_after_attempt(box->attempts);
-}
-
-static void relay_tick(page_radio_t *radio, const hal_t *hal) {
-  uint32_t now = hal->now_ms(hal->ctx);
-  for (int i = 0; i < radio->seen_n; i++) {
-    page_seen_t *e = &radio->seen[i];
-    if (!e->has_pending) continue;
-    if (!time_reached(now, e->pending_at)) continue;
-    hal->radio_send_raw(hal->ctx, e->pending, e->pending_len);
-    e->has_pending = false;
-    e->pending_len = 0;
-  }
 }
 
 bool page_tx(page_radio_t *radio, const hal_t *hal, const uint8_t *dest_id, const char *body,
@@ -406,7 +294,7 @@ void page_tick(page_radio_t *radio, identity_store_t *identity, contact_book_t *
     on_raw_frame(radio, identity, contacts, hal, &raw, on_page, user, locate);
   }
   outbox_tick(radio, identity, contacts, hal, locate);
-  relay_tick(radio, hal);
+  relay_tick(&radio->relay, hal);
   locate_tick(locate, identity, contacts, hal);
 }
 
