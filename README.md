@@ -1,50 +1,78 @@
 # PEEPLE BEEPER
 
-Host emulator for a 128×64 FSTN LoRa pager. `src/firmware` is the original TypeScript pager UI (pager, display, font). It talks only to a HAL. There is no C firmware yet — `firmware/include/hal.h` is a contract sketch for a future port. `src/host` is the fake hardware. The host window runs **two independent beepers** (separate identity, contacts, pair session, and pager RAM) linked by a fake air interface.
+A 128×64 FSTN LoRa pager. Firmware lives in C under `firmware/` and talks only to a HAL. Two HAL implementations ship in-tree: a RAM double for tests and the desktop emulator, and a compile-only nRF stub.
+
+There is one pager implementation: C under `firmware/`. The desktop emulator and a future nRF board are two HALs, not two pagers.
 
 ```
-firmware/include/hal.h   C HAL sketch for a future nRF52840 port
-src/firmware/            TypeScript pager UI (not a twin of missing C)
-src/host/                Encoder knob, LCD blit, air link, leftover inject
+firmware/include     Public headers (hal.h, beeper.h, frames, crypto, …)
+firmware/src         C pager, pairing, paging, store, display, RAM HAL, air
+firmware/tests       page / store / 100ft mesh tests
+hal/nrf              nRF52840 HAL stub (compile check)
+emu                  SDL2 bench (fake air, NVM files)
 ```
 
 The LCD is a 1024-byte ST7567-style page buffer (`page * 128 + x`, bit `y & 7`).
 
-App-layer air (pairing, PAGE/ACK, crypto, relay) is described in [docs/radio-protocol.md](docs/radio-protocol.md).
+Onboarding docs:
 
-## Live emulator
+| Doc | What it covers |
+|-----|----------------|
+| [docs/architecture.md](docs/architecture.md) | Repo map, C firmware, HALs, tests |
+| [docs/hardware.md](docs/hardware.md) | Why nRF52840, SX1262, 128×64 FSTN, encoder, GPS, heading, 100 KB store |
+| [docs/prototype-assembly.md](docs/prototype-assembly.md) | Wiring checklist for one breadboard prototype |
+| [docs/hal.md](docs/hal.md) | How firmware talks to hardware (RAM HAL and nRF stub) |
+| [docs/radio-protocol.md](docs/radio-protocol.md) | Pairing, PAGE/ACK, crypto, mesh relay |
+| [docs/firmware-app.md](docs/firmware-app.md) | Screens, menus, inbox/outbox, identity, store |
 
-https://oh-low.github.io/peeple-beeper/
-
-Pushes to `main` build and publish that site via GitHub Pages.
-
-## Run locally
+## Build and test
 
 ```
-npm install
-npm run dev
+make test    # page_test, store_test, mesh_test, locate_test
+make emu     # build/peeple-emu (SDL2)
+make nrf-check
 ```
 
-## Pair two beepers
+`make test` uses clang (`-std=c11 -Wall -Wextra -Werror`). All three tests must print `ok` lines and exit 0.
 
-1. Use the two device panes (A and B).
-2. On each unit, **Settings → Display name**. That string is what the other beeper stores as the contact name. Turn the knob to change a letter, click for the next character, Back to save. With a device focused you can also type and Backspace. If you skip this, HELLO carries the last four hex of the node id.
-3. On each unit, choose **Add contact**.
-4. Check **Peer is near** (RSSI −30, above the pairing gate of −45). Uncheck to put them far (−90); pairing will not complete.
-5. Hold both on the ADD screen until each writes the other into its contact book, then returns to the menu.
-6. Open **Compose** — the peer’s Display name should be in the list. Select it, then a canned message, to send an encrypted page.
+## Emulator
 
-## Controls
+```
+make run
+```
 
-- **Peer is near** — both directions of the air link. Near = −30 dBm; far = −90 dBm.
-- **Focus** — click a device (or tab to it). Keyboard only drives the focused unit.
-- **Knob** — drag or scroll to turn (one detent per menu row). Click is the shaft button (Select).
-- **Back** — side button. On the ADD / pair screen this aborts pairing.
-- **Escape** — Back, when focus is not in a text field.
-- **Arrows** — Left/Up and Right/Down turn the knob (when not typing in a field).
-- **Enter / Space** — Select, when focus is not on a button or in a field.
-- **Plaintext inbox inject** — leftover host tool. Injects an unencrypted page into device A’s RX queue for inbox UI testing. It does not pair or use session keys.
+Install SDL2, then `make run`. That builds the emulator if needed and opens the window. On macOS, double-click `peeple-emu.command` to do the same.
 
-## Porting
+```
+brew install sdl2 pkg-config          # macOS
+sudo apt install libsdl2-dev pkg-config   # Debian / Ubuntu
+sudo dnf install SDL2-devel pkgconf-pkg-config   # Fedora
+pacman -S mingw-w64-ucrt-x86_64-SDL2 mingw-w64-ucrt-x86_64-pkgconf   # MSYS2
+```
 
-A C port means rewriting pager, display, and font in C and implementing `firmware/include/hal.h` on the board. It is not keeping the TypeScript UI and swapping `createHostHal.ts` for U8g2 + RadioLib.
+`cmake -B build/cmake && cmake --build build/cmake` is the same app if you already use CMake. It finds SDL2 through pkg-config.
+
+Default bench is three radios at east 0 / 75 / 150 ft, all at north 0 (A reaches C only through B). **+ add** / **− remove** in the top bar grow the bench up to 16 units (the window widens). Each column is a scaled 128×64 LCD (paper 207,212,192; ink 28,34,24), the radio name, its place on the foot grid, and who it can hear.
+
+- Click an LCD to focus that radio
+- Scroll or drag on the LCD = encoder
+- Click = shaft press + release (Select)
+- Esc = Back
+- **N / W / E / S** move that radio on the foot grid. North is up, south is down, west is left, east is right. A step is 5 ft, Shift is 25 ft. Scrolling the panel under an LCD moves it north or south. Straight-line distance is the radio range: under 100 ft they hear each other. The bench starts in an east-west line at 0 / 75 / 150, so A reaches C only through B. `(1, 0)` is 1 ft east. `(-150, 150)` is 150 ft west and 150 ft north. The coordinate under the compass is what a locate reply posts.
+- **flat** / **tipped** and **still** / **moving** are the level check. Tipped is 25° off flat. **heading − / +** turns that radio. A step is 15°, Shift is 45°, and 0° means the top of the LCD points north. The compass letter is the 8-way bucket the arrow uses. A locate result asks the unit to hold flat and still before it draws the arrow.
+- **sky** / **no sky** is whether a listen can see satellites. **sample** starts that listen now. The radio stores the fix and then sleeps the receiver. **no sky** during a listen keeps the last stored fix, which is what a locate reply sends.
+- j/k and arrows turn the knob; Enter/Space selects
+- Fake air is 100 ft (`firmware/include/air.h`)
+- NVM is per user: `~/Library/Application Support/Peeple/Beeper/` on macOS, `~/.local/share/Peeple/Beeper/` on Linux, `%APPDATA%\Peeple\Beeper\` on Windows. A file still named `./emu-nvm-<id>.bin` in the current directory is read once, then saved in that folder.
+
+The host seeds contact books so A/B/C can Compose without walking HELLO. That directory is emulator-only, not part of the air protocol.
+
+## Pair two beepers (without the host directory)
+
+1. Settings → Display name on each unit.
+2. Contact on both, hold the units together (RSSI ≥ −45).
+3. Compose → peer name → canned line.
+
+## Porting to hardware
+
+Implement `firmware/include/hal.h` on the board (`hal/nrf/nrf_hal.c` is a stub that must compile). Firmware already calls `hal->foo(hal->ctx, ...)`. Do not keep a TypeScript UI and swap in U8g2.

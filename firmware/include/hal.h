@@ -10,6 +10,8 @@
 #define DISPLAY_BUF_LEN (DISPLAY_WIDTH * DISPLAY_PAGES)
 #define RAW_FRAME_MAX 128
 #define NVM_BYTES (100 * 1024)
+#define PAGE_FROM_MAX 15
+#define PAGE_BODY_MAX 79
 
 typedef enum {
   ENC_NONE = 0,
@@ -19,13 +21,14 @@ typedef enum {
   ENC_RELEASE,
 } encoder_event_t;
 
-/* from/body are NUL-terminated. Max payload is 15 / 79 chars
-   (the last byte of each array is the terminator). */
+/* from/body are NUL-terminated. Max payload is PAGE_FROM_MAX / PAGE_BODY_MAX. */
 typedef struct {
   char from[16];
   char body[80];
   int8_t rssi;
   uint32_t received_ms;
+  /* Sender's mascot from the sealed page. BEEPLE_NONE keeps the spider. */
+  uint8_t beeple;
 } page_t;
 
 typedef struct {
@@ -35,40 +38,44 @@ typedef struct {
   uint32_t received_ms;
 } raw_frame_t;
 
-void hal_display_clear(void);
-void hal_display_set_pixel(uint8_t x, uint8_t y, bool on);
-/* HAL-owned DISPLAY_BUF_LEN-byte ST7567 buffer: index = page*128+x, bit y&7. */
-uint8_t *hal_display_buffer(void);
-void hal_display_flush(void);
+/* Signed arcminutes times 10,000. Positive is north and east.
+   This is the PA1616S RMC field (ddmm.mmmm / dddmm.mmmm), not decimal degrees. */
+typedef struct {
+  bool valid;
+  int32_t lat_min_e4;
+  int32_t lon_min_e4;
+} gps_fix_t;
 
-/* Dequeue one encoder event, or ENC_NONE if the queue is empty. */
-encoder_event_t hal_encoder_poll(void);
-/* Consumed edge (latched press), not a GPIO level. */
-bool hal_back_poll(void);
+/* LSM303AGR sample. heading_deg is clockwise from north: 0 means the top of
+   the device points north. The UI withholds it unless the unit is level and still. */
+typedef struct {
+  int tilt_deg;
+  bool still;
+  bool motor;
+  int heading_deg;
+} heading_sample_t;
 
-/* Dequeue one RX packet into out, or false if the queue is empty. */
-bool hal_radio_poll_rx(page_t *out);
-void hal_radio_send(const char *to, const char *body);
-
-/* Fill buf with CSPRNG bytes. Host: crypto.getRandomValues. */
-void hal_random_fill(uint8_t *buf, size_t len);
-/* Whisper = min TX power on real nRF. Host only stores a bool. */
-void hal_radio_set_whisper(bool on);
-/* Current whisper mode (firmware/tests). */
-bool hal_radio_whisper(void);
-/* Copy and transmit raw bytes. Empty send is a no-op. */
-void hal_radio_send_raw(const uint8_t *bytes, size_t len);
-/* Dequeue one raw frame into out, or false if empty. Copy on poll. */
-bool hal_radio_poll_raw(raw_frame_t *out);
-
-/* Persistent store partition (node_id, contacts, inbox, outbox, …). */
-size_t hal_nvm_load(uint8_t *out, size_t max);
-bool hal_nvm_save(const uint8_t *bytes, size_t len);
-
-/* Monotonic milliseconds from boot. uint32_t wraps. */
-uint32_t hal_now_ms(void);
-/* Wall-clock time (hours, minutes). */
-void hal_clock(uint8_t *hh, uint8_t *mm);
-uint8_t hal_battery_pct(void);
-void hal_vibe(uint16_t ms);
-void hal_beep(uint16_t ms);
+typedef struct hal {
+  void *ctx;
+  void (*display_clear)(void *ctx);
+  void (*display_set_pixel)(void *ctx, uint8_t x, uint8_t y, bool on);
+  uint8_t *(*display_buffer)(void *ctx);
+  void (*display_flush)(void *ctx);
+  encoder_event_t (*encoder_poll)(void *ctx);
+  bool (*back_poll)(void *ctx);
+  void (*random_fill)(void *ctx, uint8_t *buf, size_t len);
+  void (*radio_set_whisper)(void *ctx, bool on);
+  bool (*radio_whisper)(void *ctx);
+  void (*radio_send_raw)(void *ctx, const uint8_t *bytes, size_t len);
+  bool (*radio_poll_raw)(void *ctx, raw_frame_t *out);
+  size_t (*nvm_load)(void *ctx, uint8_t *out, size_t max);
+  bool (*nvm_save)(void *ctx, const uint8_t *bytes, size_t len);
+  uint32_t (*now_ms)(void *ctx);
+  void (*clock)(void *ctx, uint8_t *hh, uint8_t *mm);
+  uint8_t (*battery_pct)(void *ctx);
+  void (*vibe)(void *ctx, uint16_t ms);
+  void (*beep)(void *ctx, uint16_t ms);
+  bool (*gps_fix)(void *ctx, gps_fix_t *out);
+  void (*gps_power)(void *ctx, bool on);
+  bool (*heading)(void *ctx, heading_sample_t *out);
+} hal_t;
