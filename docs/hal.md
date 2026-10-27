@@ -1,6 +1,6 @@
 # Hardware abstraction layer (HAL)
 
-Firmware talks **only** to the HAL. It never includes SDL, stdio NVM paths, or LoRa driver APIs. The RAM HAL (`firmware/src/hal_ram.c`) implements the contract for tests and the emulator. `hal/nrf/nrf_hal.c` is a stub that must compile (`make nrf-check`). A real nRF52840 + SX1262 board fills the same `hal_t` function table.
+Firmware talks **only** to the HAL. It never includes SDL, stdio NVM paths, or LoRa driver APIs. The RAM HAL (`firmware/host/hal_ram.c`) implements the contract for tests and the emulator. `hal/nrf/nrf_hal.c` is a stub that must compile (`make nrf-check`). A real nRF52840 + SX1262 board fills the same `hal_t` function table.
 
 See also: [architecture](architecture.md), [firmware app](firmware-app.md), [hardware](hardware.md), [radio protocol](radio-protocol.md).
 
@@ -94,7 +94,7 @@ Firmware schedules work with `now_ms()` deadlines. It must **return** and wait f
 
 ## Radio
 
-`radio_send_raw` copies (truncates to `RAW_FRAME_MAX`) and transmits. No loopback. The RAM HAL then calls `on_tx_raw` if the air mesh attached it. `air.c` fans TX out to in-range peers with `ram_hal_push_raw`. Range is host-only.
+`radio_send_raw` copies (truncates to `RAW_FRAME_MAX`) and transmits. No loopback. The RAM HAL then calls `on_tx_raw` if the air mesh attached it. `firmware/host/air.c` fans TX out to in-range peers with `ram_hal_push_raw`. Range is host-only.
 
 ---
 

@@ -28,7 +28,7 @@ flowchart LR
   MCU --- HDG["LSM303AGR<br/>level check + coarse heading"]
 ```
 
-The contract is [`firmware/include/hal.h`](../firmware/include/hal.h). The host fake is [`firmware/src/hal_ram.c`](../firmware/src/hal_ram.c). See [HAL](hal.md) and [architecture](architecture.md).
+The contract is [`firmware/include/hal.h`](../firmware/include/hal.h). The host fake is [`firmware/host/hal_ram.c`](../firmware/host/hal_ram.c). See [HAL](hal.md) and [architecture](architecture.md).
 
 ---
 
@@ -52,7 +52,7 @@ Each subsection: role, HAL hook, emulator stand-in, hardware still TBD.
 
 **HAL hook.** App air uses `radio_send_raw` / `radio_poll_raw` (copy on poll, empty send is a no-op). `radio_set_whisper` / `radio_whisper` are TX-power mode (see [Power and pairing](#power-and-pairing)). Pairing and encrypted paging both use that raw path.
 
-**Emulator.** [`firmware/src/air.c`](../firmware/src/air.c) fans each TX to other host radios. Units sit on the **east/north foot grid**. A hop exists only if the straight-line distance is under 100 ft (`RADIO_RANGE_FT`). RSSI is **−30 dBm** at 0 ft, falling **60 dB** linearly across that span; at 100 ft the link is silent. Firmware paging has **no RSSI gate**; the 100 ft cutoff is host-only. There are **no collisions, no CAD, no airtime model, no loopback**. Whisper is a bool and does not change emulator RSSI or range. Default bench radios sit at east 0 / 75 / 150, north 0, so A reaches C only through B.
+**Emulator.** [`firmware/host/air.c`](../firmware/host/air.c) fans each TX to other host radios. Units sit on the **east/north foot grid**. A hop exists only if the straight-line distance is under 100 ft (`RADIO_RANGE_FT`). RSSI is **−30 dBm** at 0 ft, falling **60 dB** linearly across that span; at 100 ft the link is silent. Firmware paging has **no RSSI gate**; the 100 ft cutoff is host-only. There are **no collisions, no CAD, no airtime model, no loopback**. Whisper is a bool and does not change emulator RSSI or range. Default bench radios sit at east 0 / 75 / 150, north 0, so A reaches C only through B.
 
 **TBD.** Module, SPI/DIO wiring, frequency, region (e.g. EU868 vs US915), spreading factor, bandwidth, coding rate, preamble, TX power table (beyond “whisper = min”), antenna, and CAD/LBT. [Radio protocol](radio-protocol.md) is the app layer, not a PHY spec. On the Feather, **D12** is the SX1262 **NRESET** and nothing else. Pulse it at boot, and again only when the radio has stopped answering. `radio_set_whisper` and `radio_send_raw` must not pulse it. Current firmware never pulses a reset pin. `page_radio_reset` only clears RAM.
 

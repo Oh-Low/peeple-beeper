@@ -198,7 +198,7 @@ Settings **VIBE TEST** holds `vibe(250)` each render while Settings is open. Pre
 
 ## Changing a menu safely
 
-Stay inside `firmware/src` (except `hal_ram.c` / `air.c`). Call `hal->foo(hal->ctx, ...)` only — **no SDL, no files**. Tests may construct a RAM HAL; production pager code must not.
+Stay inside `firmware/src`. Call `hal->foo(hal->ctx, ...)` only — **no SDL, no files**. The RAM HAL and the desktop mesh live in `firmware/host`. Tests may construct a RAM HAL; production pager code must not.
 
 Checklist when you add/rename a menu row:
 

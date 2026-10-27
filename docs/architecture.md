@@ -12,7 +12,7 @@ The host never implements pairing or PAGE crypto. Firmware never knows about SDL
 
 ```mermaid
 flowchart TB
-  subgraph host ["Host — emu/ + firmware air"]
+  subgraph host ["Host — emu/ + firmware/host"]
     UI["SDL2 bench / tests"]
     HALImpl["hal_ram.c"]
     Air["air.c fake air"]
@@ -44,7 +44,9 @@ Tick order, frame types, and crypto are in [firmware-app.md](firmware-app.md) an
 |------|------|
 | `firmware/include/hal.h` | HAL contract (`hal_t` ops + `ctx`). |
 | `firmware/include/beeper.h` | `beeper_init` / `tick` / `reset` / `debug_key`. |
-| `firmware/src/*.c` | Pager, pair, page, store, display, crypto, frames, RAM HAL, air. |
+| `firmware/src/*.c` | Pager, pair, page, store, display, crypto, frames. |
+| `firmware/host/` | RAM HAL and desktop radio mesh. Tests and the emulator only. |
+| `firmware/art/` | Generated 1-bit picture bytes (`art.c`). |
 | `firmware/tests/` | `page_test`, `store_test`, `mesh_test`, `locate_test`. |
 | `hal/nrf/` | nRF HAL stub; `make nrf-check`. |
 | `emu/` | SDL2 window + `seed.c` host directory. |
@@ -64,6 +66,7 @@ beeper_t
   pager        screens, inbox, outbox, canned, editor
   pair         whisper pairing session
   radio        PAGE TX/RX/relay
+  locate       position exchange and the saved fix
   nvm_ready / nvm_hash
 ```
 
@@ -105,7 +108,7 @@ make emu
 | 100 ft mesh + host directory | `mesh_test` |
 | NVM encode/decode | `store_test` |
 
-**HAL-only firmware.** Production files under `firmware/src` (except `hal_ram.c` and `air.c`) must not assume SDL or files. They call `hal->foo(hal->ctx, ...)`.
+**HAL-only firmware.** Production files under `firmware/src` and `firmware/art` must not assume SDL or files. They call `hal->foo(hal->ctx, ...)`. The RAM HAL and the desktop mesh live in `firmware/host`.
 
 ---
 

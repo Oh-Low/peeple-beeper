@@ -6,7 +6,9 @@ There is one pager implementation: C under `firmware/`. The desktop emulator and
 
 ```
 firmware/include     Public headers (hal.h, beeper.h, frames, crypto, …)
-firmware/src         C pager, pairing, paging, store, display, RAM HAL, air
+firmware/src         C pager, pairing, paging, store, display
+firmware/host        RAM HAL and desktop radio mesh (tests and emulator)
+firmware/art         Generated 1-bit picture bytes
 firmware/tests       page / store / 100ft mesh tests
 hal/nrf              nRF52840 HAL stub (compile check)
 emu                  SDL2 bench (fake air, NVM files)

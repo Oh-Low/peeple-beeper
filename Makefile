@@ -25,7 +25,10 @@ ifeq ($(SDL_CFLAGS),)
 endif
 
 FW_SRC := $(wildcard firmware/src/*.c)
-FW_CORE := $(filter-out firmware/src/hal_ram.c,$(FW_SRC))
+ART_SRC := firmware/art/art.c
+HOST_SRC := $(wildcard firmware/host/*.c)
+FW_LINK := $(FW_SRC) $(ART_SRC) $(HOST_SRC)
+FW_CORE := $(FW_SRC) $(ART_SRC)
 TEST_DIR := firmware/tests
 BUILD := build
 
@@ -36,17 +39,17 @@ all: test
 $(BUILD):
 	mkdir -p $(BUILD)
 
-$(BUILD)/page_test: $(TEST_DIR)/page_test.c $(FW_SRC) | $(BUILD)
-	$(CC) $(CFLAGS) -o $@ $(TEST_DIR)/page_test.c $(FW_SRC)
+$(BUILD)/page_test: $(TEST_DIR)/page_test.c $(FW_LINK) | $(BUILD)
+	$(CC) $(CFLAGS) -o $@ $(TEST_DIR)/page_test.c $(FW_LINK)
 
-$(BUILD)/store_test: $(TEST_DIR)/store_test.c $(FW_SRC) | $(BUILD)
-	$(CC) $(CFLAGS) -o $@ $(TEST_DIR)/store_test.c $(FW_SRC)
+$(BUILD)/store_test: $(TEST_DIR)/store_test.c $(FW_LINK) | $(BUILD)
+	$(CC) $(CFLAGS) -o $@ $(TEST_DIR)/store_test.c $(FW_LINK)
 
-$(BUILD)/mesh_test: $(TEST_DIR)/mesh_test.c emu/seed.c $(FW_SRC) | $(BUILD)
-	$(CC) $(CFLAGS) -Iemu -o $@ $(TEST_DIR)/mesh_test.c emu/seed.c $(FW_SRC)
+$(BUILD)/mesh_test: $(TEST_DIR)/mesh_test.c emu/seed.c $(FW_LINK) | $(BUILD)
+	$(CC) $(CFLAGS) -Iemu -o $@ $(TEST_DIR)/mesh_test.c emu/seed.c $(FW_LINK)
 
-$(BUILD)/locate_test: $(TEST_DIR)/locate_test.c $(FW_SRC) hal/nrf/nrf_hal.c | $(BUILD)
-	$(CC) $(CFLAGS) -Ihal/nrf -o $@ $(TEST_DIR)/locate_test.c $(FW_SRC) hal/nrf/nrf_hal.c
+$(BUILD)/locate_test: $(TEST_DIR)/locate_test.c $(FW_LINK) hal/nrf/nrf_hal.c | $(BUILD)
+	$(CC) $(CFLAGS) -Ihal/nrf -o $@ $(TEST_DIR)/locate_test.c $(FW_LINK) hal/nrf/nrf_hal.c
 
 test: $(BUILD)/page_test $(BUILD)/store_test $(BUILD)/mesh_test $(BUILD)/locate_test
 	$(BUILD)/page_test
@@ -57,7 +60,7 @@ test: $(BUILD)/page_test $(BUILD)/store_test $(BUILD)/mesh_test $(BUILD)/locate_
 $(BUILD)/Roboto-Regular.ttf: emu/third_party/roboto/Roboto-Regular.ttf | $(BUILD)
 	cp $< $@
 
-$(BUILD)/peeple-emu: emu/main.c emu/font.c emu/seed.c $(FW_SRC) $(BUILD)/Roboto-Regular.ttf | $(BUILD)
+$(BUILD)/peeple-emu: emu/main.c emu/font.c emu/seed.c $(FW_LINK) $(BUILD)/Roboto-Regular.ttf | $(BUILD)
 	@if [ -z "$(SDL_CFLAGS)" ]; then \
 	  echo "SDL2 is required to build the emulator."; \
 	  echo "  macOS:    brew install sdl2 pkg-config"; \
@@ -66,7 +69,7 @@ $(BUILD)/peeple-emu: emu/main.c emu/font.c emu/seed.c $(FW_SRC) $(BUILD)/Roboto-
 	  echo "  MSYS2:    pacman -S mingw-w64-ucrt-x86_64-SDL2 mingw-w64-ucrt-x86_64-pkgconf"; \
 	  exit 1; \
 	fi
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Iemu -o $@ emu/main.c emu/font.c emu/seed.c $(FW_SRC) $(SDL_LIBS)
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Iemu -o $@ emu/main.c emu/font.c emu/seed.c $(FW_LINK) $(SDL_LIBS)
 
 emu: $(BUILD)/peeple-emu
 

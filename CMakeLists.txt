@@ -9,6 +9,9 @@ if(NOT MSVC)
 endif()
 
 file(GLOB FW_SRC CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/firmware/src/*.c")
+file(GLOB HOST_SRC CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/firmware/host/*.c")
+set(ART_SRC "${CMAKE_SOURCE_DIR}/firmware/art/art.c")
+set(FW_LINK ${FW_SRC} ${ART_SRC} ${HOST_SRC})
 set(FW_INC "${CMAKE_SOURCE_DIR}/firmware/include")
 
 function(peeple_test name)
@@ -16,19 +19,19 @@ function(peeple_test name)
   target_include_directories(${name} PRIVATE ${FW_INC})
 endfunction()
 
-peeple_test(page_test firmware/tests/page_test.c ${FW_SRC})
-peeple_test(store_test firmware/tests/store_test.c ${FW_SRC})
+peeple_test(page_test firmware/tests/page_test.c ${FW_LINK})
+peeple_test(store_test firmware/tests/store_test.c ${FW_LINK})
 
-peeple_test(mesh_test firmware/tests/mesh_test.c emu/seed.c ${FW_SRC})
+peeple_test(mesh_test firmware/tests/mesh_test.c emu/seed.c ${FW_LINK})
 target_include_directories(mesh_test PRIVATE "${CMAKE_SOURCE_DIR}/emu")
 
-peeple_test(locate_test firmware/tests/locate_test.c ${FW_SRC} hal/nrf/nrf_hal.c)
+peeple_test(locate_test firmware/tests/locate_test.c ${FW_LINK} hal/nrf/nrf_hal.c)
 target_include_directories(locate_test PRIVATE "${CMAKE_SOURCE_DIR}/hal/nrf")
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
 
-add_executable(peeple-emu emu/main.c emu/font.c emu/seed.c ${FW_SRC})
+add_executable(peeple-emu emu/main.c emu/font.c emu/seed.c ${FW_LINK})
 target_include_directories(peeple-emu PRIVATE ${FW_INC} "${CMAKE_SOURCE_DIR}/emu")
 target_link_libraries(peeple-emu PRIVATE PkgConfig::SDL2)
 

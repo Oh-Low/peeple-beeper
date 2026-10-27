@@ -352,7 +352,7 @@ When tracking asks, the target sends nothing until the user picks Allow or Deny.
 
 ## 9. Host emulator range versus firmware
 
-The host (`firmware/src/air.c`) places units on the **east/north foot grid**. A hop exists only if the straight-line distance is under 100 ft (`RADIO_RANGE_FT`). At **100 ft** the link is silent (no RX).
+The host (`firmware/host/air.c`) places units on the **east/north foot grid**. A hop exists only if the straight-line distance is under 100 ft (`RADIO_RANGE_FT`). At **100 ft** the link is silent (no RX).
 
 RSSI is about **−30 dBm** at 0 ft, falling **60 dB** linearly across that span. Pairing still requires **≥ −45 dBm** on top of being in range, so two units can be in paging range on the emulator and still fail to pair.
 

@@ -10,7 +10,7 @@ paper (0). Bytes match firmware/include/art.h: bit 0 is the top pixel of an
   python3 tools/png_to_art.py --name art_badge badge.png
   python3 tools/png_to_art.py --invert light-on-dark.png
 
---write adds the symbol to firmware/include/art.h and firmware/src/art.c, or
+--write adds the symbol to firmware/include/art.h and firmware/art/art.c, or
 replaces it when that name is already there. A file named badge.png becomes
 art_badge. Pass --name to choose the symbol.
 """
@@ -24,7 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ART_H = ROOT / "firmware" / "include" / "art.h"
-ART_C = ROOT / "firmware" / "src" / "art.c"
+ART_C = ROOT / "firmware" / "art" / "art.c"
 
 
 def _paeth(a, b, c):
@@ -259,7 +259,7 @@ def main(argv):
     parser.add_argument("pngs", nargs="+", type=Path)
     parser.add_argument("--name", help="C symbol for a single PNG (default: art_<filename>)")
     parser.add_argument("--invert", action="store_true", help="light pixels are ink")
-    parser.add_argument("--write", action="store_true", help="update firmware/include/art.h and firmware/src/art.c")
+    parser.add_argument("--write", action="store_true", help="update firmware/include/art.h and firmware/art/art.c")
     args = parser.parse_args(argv)
     if args.name and len(args.pngs) != 1:
         raise SystemExit("--name applies to one PNG")
