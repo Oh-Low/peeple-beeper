@@ -1,6 +1,6 @@
 # Hardware
 
-Peeple Beeper is aimed at a pocket pager: an **nRF52840-class MCU**, an **SX1262 LoRa radio**, a **128×64 1-bit FSTN LCD** with an ST7567-style page buffer, a **rotary encoder** plus **back** button, **vibe** and **beep**, a **PA1616S GPS**, an **LSM303AGR** accelerometer and magnetometer, a **battery**, and a **~100 KB persistent store** for identity, contacts, canned favorites, inbox, and outbox. Firmware is C (`firmware/src`) against `firmware/include/hal.h`. The running desktop app is an SDL2 emulator (`emu/`) with a RAM HAL; `hal/nrf/nrf_hal.c` is a compile-only board stub. This document explains why those pieces exist, what they imply for software, and what is real hardware versus emulator-only. It is not a schematic or a BOM.
+Peeple Beeper is aimed at a pocket pager: an **nRF52840-class MCU**, an **SX1262 LoRa radio**, a **128×64 1-bit FSTN LCD** with an ST7567-style page buffer, a **rotary encoder** plus **back** button, **vibe** and **beep**, a **PA1616S GPS**, an **LSM303AGR** accelerometer and magnetometer, a **battery**, and a **~100 KB persistent store** for identity, contacts, canned favorites, inbox, and outbox. Firmware is C (`firmware/src`) against `hal/hal.h`. The running desktop app is an SDL2 emulator (`emu/`) with the RAM HAL in `hal/emu`; `hal/beeper/nrf_hal.c` is a compile-only board stub. This document explains why those pieces exist, what they imply for software, and what is real hardware versus emulator-only. It is not a schematic or a BOM.
 
 ---
 
@@ -28,7 +28,7 @@ flowchart LR
   MCU --- HDG["LSM303AGR<br/>level check + coarse heading"]
 ```
 
-The contract is [`firmware/include/hal.h`](../firmware/include/hal.h). The host fake is [`firmware/host/hal_ram.c`](../firmware/host/hal_ram.c). See [HAL](hal.md) and [architecture](architecture.md).
+The contract is [`hal/hal.h`](../hal/hal.h). The emulator implementation is [`hal/emu/hal_ram.c`](../hal/emu/hal_ram.c). The beeper board stub is [`hal/beeper/nrf_hal.c`](../hal/beeper/nrf_hal.c). See [HAL](hal.md) and [architecture](architecture.md).
 
 ---
 
@@ -158,7 +158,7 @@ Battery math, sleep current, and TX current vs whisper are not in the repo.
 
 ## What the board HAL must implement
 
-**Implement** the `hal_t` table in `firmware/include/hal.h` on the board (replace `hal/nrf/nrf_hal.c`): display buffer + flush, encoder and back event queues, raw radio TX/RX with RSSI and timestamps, whisper as actual min TX, CSPRNG, 100 KB load/save, monotonic ms, wall-clock HH:MM, battery percent, vibe, beep, the GPS fix, and `heading`. Heading is wired on the prototype; the stub’s `heading` still returns no sample. Whisper and send/poll must not pulse **D12**. That pin is the radio reset only.
+**Implement** the `hal_t` table in `hal/hal.h` on the board (replace `hal/beeper/nrf_hal.c`): display buffer + flush, encoder and back event queues, raw radio TX/RX with RSSI and timestamps, whisper as actual min TX, CSPRNG, 100 KB load/save, monotonic ms, wall-clock HH:MM, battery percent, vibe, beep, the GPS fix, and `heading`. Heading is wired on the prototype; the stub’s `heading` still returns no sample. Whisper and send/poll must not pulse **D12**. That pin is the radio reset only.
 
 Firmware is already C. Do not keep a second UI and swap in U8g2 + RadioLib. See [firmware app](firmware-app.md).
 

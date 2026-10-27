@@ -5,12 +5,14 @@ A 128×64 FSTN LoRa pager. Firmware lives in C under `firmware/` and talks only 
 There is one pager implementation: C under `firmware/`. The desktop emulator and a future nRF board are two HALs, not two pagers.
 
 ```
-firmware/include     Public headers (hal.h, beeper.h, frames, crypto, …)
+firmware/include     Public headers (beeper.h, frames, crypto, …)
 firmware/src         C pager, pairing, paging, store, display
-firmware/host        RAM HAL and desktop radio mesh (tests and emulator)
+firmware/host        Desktop radio mesh (tests and emulator)
 firmware/art         Generated 1-bit picture bytes
 firmware/tests       page / store / 100ft mesh tests
-hal/nrf              nRF52840 HAL stub (compile check)
+hal/hal.h            HAL contract
+hal/emu              RAM HAL for tests and the emulator
+hal/beeper           Beeper board HAL stub (compile check)
 emu                  SDL2 bench (fake air, NVM files)
 ```
 
@@ -77,4 +79,4 @@ The host seeds contact books so A/B/C can Compose without walking HELLO. That di
 
 ## Porting to hardware
 
-Implement `firmware/include/hal.h` on the board (`hal/nrf/nrf_hal.c` is a stub that must compile). Firmware already calls `hal->foo(hal->ctx, ...)`. Do not keep a TypeScript UI and swap in U8g2.
+Implement `hal/hal.h` on the board (`hal/beeper/nrf_hal.c` is a stub that must compile). Firmware already calls `hal->foo(hal->ctx, ...)`. Do not keep a TypeScript UI and swap in U8g2.

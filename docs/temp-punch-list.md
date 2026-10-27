@@ -3,7 +3,8 @@
 From the source-overview critique. Temporary. Check an item off when it is done.
 
 - [x] Split `firmware/src` so product code, host stand-ins, and generated picture bytes are not one flat directory. Product stays in `firmware/src`. Host stand-ins are `firmware/host`. Picture bytes are `firmware/art`.
-- [ ] Put both hardware implementations in one place and name them the same way. The RAM HAL is `firmware/host/hal_ram.c`. The board stub is `hal/nrf/nrf_hal.c`.
+- [x] HAL implementations live under `hal/`, one directory per machine: `hal/emu` (tests and the desktop emulator) and `hal/beeper` (the board). The shared contract is `hal/hal.h`.
+- [ ] Name the two HAL files the same way. They are still `hal/emu/hal_ram.c` and `hal/beeper/nrf_hal.c`.
 - [x] Move `art.c` out of the folder that holds the tick and the radio. It is a generated bitmap table. It now lives in `firmware/art/art.c`.
 - [ ] Rename `air.c`. The name reads as the packet path. The file is the desktop foot-grid and RSSI falloff.
 - [ ] Rename `page.c` and `pager.c` so the screen and the radio switch are not one word apart.

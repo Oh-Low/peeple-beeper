@@ -10,7 +10,7 @@ This is the document to read before you change a menu row, list drawing, or what
 
 ## What “firmware” means here
 
-`firmware/src` is a **C pager application** that talks only to `hal_t` (`firmware/include/hal.h`). It is the product logic. A board port implements the same HAL; it does not keep a second UI.
+`firmware/src` is a **C pager application** that talks only to `hal_t` (`hal/hal.h`). It is the product logic. A board port implements the same HAL; it does not keep a second UI.
 
 Firmware must not include the emulator. Pairing and paging use `radio_send_raw` / `radio_poll_raw`.
 
@@ -198,7 +198,7 @@ Settings **VIBE TEST** holds `vibe(250)` each render while Settings is open. Pre
 
 ## Changing a menu safely
 
-Stay inside `firmware/src`. Call `hal->foo(hal->ctx, ...)` only — **no SDL, no files**. The RAM HAL and the desktop mesh live in `firmware/host`. Tests may construct a RAM HAL; production pager code must not.
+Stay inside `firmware/src`. Call `hal->foo(hal->ctx, ...)` only — **no SDL, no files**. The emulator HAL lives in `hal/emu`. The desktop mesh lives in `firmware/host`. Tests may construct a RAM HAL; production pager code must not.
 
 Checklist when you add/rename a menu row:
 
@@ -237,7 +237,7 @@ Do not encode selection as ASCII `>`. Keep invert-rect lists.
 | `firmware/src/store.c` | NVM encode/decode/sync |
 | `firmware/src/textedit.c` | Frequency keyboard, snaps back to E |
 | `firmware/src/display.c` | Pixels, invert, wrap, clip, glyphs |
-| `firmware/include/hal.h` | Constants + `hal_t` the app may call |
+| `hal/hal.h` | Constants + `hal_t` the app may call |
 | `firmware/src/frames.c` / `crypto.c` | Wire (see protocol doc) |
 
 ### Constants (verify in code, not comments)

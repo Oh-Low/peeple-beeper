@@ -1,8 +1,8 @@
 # Architecture
 
-Peeple Beeper firmware is C under `firmware/`. It talks only to a HAL (`firmware/include/hal.h`). Tests and the desktop emulator use the RAM HAL and the foot-grid mesh in `firmware/host/`. `hal/nrf/nrf_hal.c` is the compile-only board stub of that same `hal_t` table.
+Peeple Beeper firmware is C under `firmware/`. It talks only to a HAL (`hal/hal.h`). Implementations live under `hal/`, one directory per machine: `hal/emu` for tests and the desktop emulator, `hal/beeper` for the beeper board. `firmware/host/` is the desktop foot-grid mesh, not a HAL.
 
-There is no second pager in TypeScript. Host code is an SDL2 window, the RAM HAL, and the foot-grid mesh.
+There is no second pager in TypeScript. Host code is an SDL2 window, `hal/emu`, and the foot-grid mesh.
 
 ---
 
@@ -14,8 +14,8 @@ The host never implements pairing or PAGE crypto. Firmware never knows about SDL
 flowchart TB
   subgraph host ["Host — emu/ + firmware/host"]
     UI["SDL2 bench / tests"]
-    HALImpl["hal_ram.c"]
-    Air["air.c fake air"]
+    HALImpl["hal/emu/hal_ram.c"]
+    Air["firmware/host/air.c mesh"]
     Seed["emu/seed.c contact directory"]
   end
   subgraph fw ["C firmware — firmware/src"]
@@ -42,20 +42,23 @@ Tick order, frame types, and crypto are in [firmware-app.md](firmware-app.md) an
 
 | Path | Role |
 |------|------|
-| `firmware/include/hal.h` | HAL contract (`hal_t` ops + `ctx`). |
+| `hal/hal.h` | HAL contract (`hal_t` ops + `ctx`). Shared. Not an implementation. |
+| `hal/emu/` | RAM HAL for tests and the desktop emulator. |
+| `hal/beeper/` | Beeper board HAL. Today this is the nRF52840 stub (`make nrf-check`). |
 | `firmware/include/beeper.h` | `beeper_init` / `tick` / `reset` / `debug_key`. |
 | `firmware/src/*.c` | Pager, pair, page, store, display, crypto, frames. |
-| `firmware/host/` | RAM HAL and desktop radio mesh. Tests and the emulator only. |
+| `firmware/host/` | Desktop radio mesh (`air.c`) only. Tests and the emulator. |
 | `firmware/art/` | Generated 1-bit picture bytes (`art.c`). |
 | `firmware/tests/` | `page_test`, `store_test`, `mesh_test`, `locate_test`. |
-| `hal/nrf/` | nRF HAL stub; `make nrf-check`. |
 | `emu/` | SDL2 window + `seed.c` host directory. |
 | `Makefile` | `make test`, `make emu`, `make nrf-check`. |
 | `docs/` | This map and protocol/app/HAL notes. |
 | `tools/png_to_art.py` | Any PNG to a 1-bit C array. |
 | `tools/beeple_to_art.py` | Mascot PNGs into `firmware/art`. |
 
-A new `.c` file goes in the directory of its kind. Product logic stays in `firmware/src`. Host stand-ins stay in `firmware/host`. Generated picture bytes stay in `firmware/art`. The board port stays in `hal/<chip>/`. Both HAL `.c` files implement `hal.h`. The host file is `firmware/host/hal_ram.c`. The board file is `hal/nrf/nrf_hal.c`. A new port is `hal/<chip>/<chip>_hal.c`. A new host stand-in stays in `firmware/host`.
+A new `.c` file goes in the directory of its kind. Product logic stays in `firmware/src`. The desktop mesh stays in `firmware/host`. Generated picture bytes stay in `firmware/art`.
+
+Every HAL implementation lives under `hal/`, in a directory named for the machine it drives. `hal/emu` is the emulator. `hal/beeper` is the beeper. A new machine gets `hal/<machine>/` and implements `hal/hal.h`. It does not go in `firmware/src` or `firmware/host`.
 
 `firmware/host/air.c` is the desktop range model: feet and RSSI. The packet path is `frames.c` (byte layout), `crypto.c` (SHA-256 constructions), and `relay.c` (the forward cache). Frame layout, seals, and hop policy do not go in `air.c`.
 
@@ -143,7 +146,7 @@ A test file is named for the decision it pins. A new proof of a decision goes in
 | Desktop mesh, contact seeding, restarting a pair | `mesh_test` |
 | NVM blob round-trip, including the storage-budget guard | `store_test` |
 
-**HAL-only firmware.** Production files under `firmware/src` and `firmware/art` must not assume SDL or files. They call `hal->foo(hal->ctx, ...)`. The RAM HAL and the desktop mesh live in `firmware/host`.
+**HAL-only firmware.** Production files under `firmware/src` and `firmware/art` must not assume SDL or files. They call `hal->foo(hal->ctx, ...)`. They include `hal/hal.h` and no file under `hal/emu` or `hal/beeper`. The desktop mesh lives in `firmware/host`.
 
 ---
 

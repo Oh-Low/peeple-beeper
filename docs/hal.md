@@ -1,6 +1,6 @@
 # Hardware abstraction layer (HAL)
 
-Firmware talks **only** to the HAL. It never includes SDL, stdio NVM paths, or LoRa driver APIs. The RAM HAL (`firmware/host/hal_ram.c`) implements the contract for tests and the emulator. `hal/nrf/nrf_hal.c` is a stub that must compile (`make nrf-check`). A real nRF52840 + SX1262 board fills the same `hal_t` function table.
+Firmware talks **only** to the HAL. It never includes SDL, stdio NVM paths, or LoRa driver APIs. The contract is `hal/hal.h`. `hal/emu` is the RAM HAL for tests and the emulator. `hal/beeper` is the beeper board; `nrf_hal.c` there is a stub that must compile (`make nrf-check`). A real nRF52840 + SX1262 board fills the same `hal_t` function table.
 
 See also: [architecture](architecture.md), [firmware app](firmware-app.md), [hardware](hardware.md), [radio protocol](radio-protocol.md).
 
@@ -11,12 +11,12 @@ See also: [architecture](architecture.md), [firmware app](firmware-app.md), [har
 A **function table plus context pointer**. C firmware calls `hal->foo(hal->ctx, ...)`. Firmware **polls**. The host (or a future RTOS tick) calls `beeper_tick`; that tick asks the HAL “anything new?” and returns.
 
 ```
-  Emulator timer / test harness        future nRF timer tick
+  Emulator timer / test harness        beeper board tick
             |                                |
             v                                v
-        hal_ram.c                         nrf_hal.c
+        hal/emu                           hal/beeper
             \                                /
-             \------ hal_t / hal.h ---------/
+             \------ hal_t / hal/hal.h -----/
                           |
                     firmware/src
               (beeper, pager, page, pair, store)
@@ -58,9 +58,9 @@ Index is `(y >> 3) * 128 + x`, bit `1 << (y & 7)`.
 
 ## Two HALs in-tree
 
-**RAM HAL** (`hal_ram.h`): queues for encoder, back, and raw RX, an NVM blob, LCG `random_fill`, `on_tx_raw` for the fake air. Used by `make test` and `make emu`.
+**RAM HAL** (`hal/emu`): queues for encoder, back, and raw RX, an NVM blob, LCG `random_fill`, `on_tx_raw` for the desktop mesh. Used by `make test` and `make emu`.
 
-**nRF stub** (`hal/nrf/`): every `hal_t` function is a no-op or a static display buffer. `random_fill` is incremental. `now_ms` is 0. `gps_fix` returns the last RMC sentence fed to `nrf_gps_push_byte` (the seam for the Feather UART). Enough to `make nrf-check`.
+**Beeper stub** (`hal/beeper`): every `hal_t` function is a no-op or a static display buffer. `random_fill` is incremental. `now_ms` is 0. `gps_fix` returns the last RMC sentence fed to `nrf_gps_push_byte` (the seam for the Feather UART). Enough to `make nrf-check`.
 
 ### GPS fix
 

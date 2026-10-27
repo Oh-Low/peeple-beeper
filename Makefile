@@ -1,5 +1,5 @@
 CC := clang
-CFLAGS := -std=c11 -Wall -Wextra -Werror -Ifirmware/include -O1
+CFLAGS := -std=c11 -Wall -Wextra -Werror -Ifirmware/include -Ihal -O1
 
 PKG_CONFIG ?= pkg-config
 PKG_CONFIG_PATH := /opt/homebrew/lib/pkgconfig:/usr/local/lib/pkgconfig:/opt/local/lib/pkgconfig:$(PKG_CONFIG_PATH)
@@ -27,7 +27,9 @@ endif
 FW_SRC := $(wildcard firmware/src/*.c)
 ART_SRC := firmware/art/art.c
 HOST_SRC := $(wildcard firmware/host/*.c)
-FW_LINK := $(FW_SRC) $(ART_SRC) $(HOST_SRC)
+HAL_EMU_SRC := hal/emu/hal_ram.c
+HAL_BEEPER_SRC := hal/beeper/nrf_hal.c
+FW_LINK := $(FW_SRC) $(ART_SRC) $(HOST_SRC) $(HAL_EMU_SRC)
 FW_CORE := $(FW_SRC) $(ART_SRC)
 TEST_DIR := firmware/tests
 BUILD := build
@@ -40,16 +42,16 @@ $(BUILD):
 	mkdir -p $(BUILD)
 
 $(BUILD)/page_test: $(TEST_DIR)/page_test.c $(FW_LINK) | $(BUILD)
-	$(CC) $(CFLAGS) -o $@ $(TEST_DIR)/page_test.c $(FW_LINK)
+	$(CC) $(CFLAGS) -Ihal/emu -o $@ $(TEST_DIR)/page_test.c $(FW_LINK)
 
 $(BUILD)/store_test: $(TEST_DIR)/store_test.c $(FW_LINK) | $(BUILD)
-	$(CC) $(CFLAGS) -o $@ $(TEST_DIR)/store_test.c $(FW_LINK)
+	$(CC) $(CFLAGS) -Ihal/emu -o $@ $(TEST_DIR)/store_test.c $(FW_LINK)
 
 $(BUILD)/mesh_test: $(TEST_DIR)/mesh_test.c emu/seed.c $(FW_LINK) | $(BUILD)
-	$(CC) $(CFLAGS) -Iemu -o $@ $(TEST_DIR)/mesh_test.c emu/seed.c $(FW_LINK)
+	$(CC) $(CFLAGS) -Iemu -Ihal/emu -o $@ $(TEST_DIR)/mesh_test.c emu/seed.c $(FW_LINK)
 
-$(BUILD)/locate_test: $(TEST_DIR)/locate_test.c $(FW_LINK) hal/nrf/nrf_hal.c | $(BUILD)
-	$(CC) $(CFLAGS) -Ihal/nrf -o $@ $(TEST_DIR)/locate_test.c $(FW_LINK) hal/nrf/nrf_hal.c
+$(BUILD)/locate_test: $(TEST_DIR)/locate_test.c $(FW_LINK) $(HAL_BEEPER_SRC) | $(BUILD)
+	$(CC) $(CFLAGS) -Ihal/emu -Ihal/beeper -o $@ $(TEST_DIR)/locate_test.c $(FW_LINK) $(HAL_BEEPER_SRC)
 
 test: $(BUILD)/page_test $(BUILD)/store_test $(BUILD)/mesh_test $(BUILD)/locate_test
 	$(BUILD)/page_test
@@ -69,7 +71,7 @@ $(BUILD)/peeple-emu: emu/main.c emu/font.c emu/seed.c $(FW_LINK) $(BUILD)/Roboto
 	  echo "  MSYS2:    pacman -S mingw-w64-ucrt-x86_64-SDL2 mingw-w64-ucrt-x86_64-pkgconf"; \
 	  exit 1; \
 	fi
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Iemu -o $@ emu/main.c emu/font.c emu/seed.c $(FW_LINK) $(SDL_LIBS)
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Iemu -Ihal/emu -o $@ emu/main.c emu/font.c emu/seed.c $(FW_LINK) $(SDL_LIBS)
 
 emu: $(BUILD)/peeple-emu
 
@@ -78,8 +80,8 @@ run: $(BUILD)/peeple-emu
 
 nrf-check: | $(BUILD)
 	mkdir -p $(BUILD)/nrf
-	for f in $(FW_CORE) hal/nrf/nrf_hal.c; do \
-	  $(CC) $(CFLAGS) -Ihal/nrf -c $$f -o $(BUILD)/nrf/$$(basename $$f .c).o; \
+	for f in $(FW_CORE) $(HAL_BEEPER_SRC); do \
+	  $(CC) $(CFLAGS) -Ihal/beeper -c $$f -o $(BUILD)/nrf/$$(basename $$f .c).o; \
 	done
 
 clean:

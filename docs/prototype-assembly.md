@@ -315,7 +315,7 @@ Unplug the LiPo. Plug in only USB. These boxes stay empty unless the bad conditi
 - [ ] Compass powered from the red rail, **SDA** and **SCL** on those Feather pins, **CSA** and **CSM** empty, **D12** connected only to radio `GP15`, **PPS** still empty.
 - [ ] Adafruit LiPo in the Feather's white socket. Radio battery still in the bag.
 
-The pager application is a separate piece of work. `hal/nrf/nrf_hal.c` is still a stub. Until that stub drives these exact pins, the screen will not show a menu and the radio will not send a page.
+The pager application is a separate piece of work. `hal/beeper/nrf_hal.c` is still a stub. Until that stub drives these exact pins, the screen will not show a menu and the radio will not send a page.
 
 ## Related
 
