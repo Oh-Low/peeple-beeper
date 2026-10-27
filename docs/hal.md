@@ -1,6 +1,6 @@
 # Hardware abstraction layer (HAL)
 
-Firmware talks **only** to the HAL. It never includes SDL, stdio NVM paths, or LoRa driver APIs. The contract is `hal/hal.h`. `hal/emu` is the RAM HAL for tests and the emulator. `hal/beeper` is the beeper board; `nrf_hal.c` there is a stub that must compile (`make nrf-check`). A real nRF52840 + SX1262 board fills the same `hal_t` function table.
+Firmware talks **only** to the HAL. It never includes SDL, stdio NVM paths, or LoRa driver APIs. The contract is `hal/hal.h`. `hal/emu` is the RAM HAL for tests and the emulator. `hal/beeper` is the beeper board; `beeper_hal.c` there is a stub that must compile (`make nrf-check`). A real nRF52840 + SX1262 board fills the same `hal_t` function table.
 
 See also: [architecture](architecture.md), [firmware app](firmware-app.md), [hardware](hardware.md), [radio protocol](radio-protocol.md).
 
@@ -22,7 +22,7 @@ A **function table plus context pointer**. C firmware calls `hal->foo(hal->ctx, 
               (beeper, pager, page, pair, store)
 ```
 
-Host-only hooks (`ram_hal_push_encoder`, `ram_hal_push_raw`, `on_tx_raw`, …) are **not** HAL. Firmware cannot see them.
+Host-only hooks (`emu_hal_push_encoder`, `emu_hal_push_raw`, `on_tx_raw`, …) are **not** HAL. Firmware cannot see them.
 
 ---
 
@@ -60,19 +60,19 @@ Index is `(y >> 3) * 128 + x`, bit `1 << (y & 7)`.
 
 **RAM HAL** (`hal/emu`): queues for encoder, back, and raw RX, an NVM blob, LCG `random_fill`, `on_tx_raw` for the desktop mesh. Used by `make test` and `make emu`.
 
-**Beeper stub** (`hal/beeper`): every `hal_t` function is a no-op or a static display buffer. `random_fill` is incremental. `now_ms` is 0. `gps_fix` returns the last RMC sentence fed to `nrf_gps_push_byte` (the seam for the Feather UART). Enough to `make nrf-check`.
+**Beeper stub** (`hal/beeper`): every `hal_t` function is a no-op or a static display buffer. `random_fill` is incremental. `now_ms` is 0. `gps_fix` returns the last RMC sentence fed to `beeper_gps_push_byte` (the seam for the Feather UART). Enough to `make nrf-check`.
 
 ### GPS fix
 
 `gps_power(true)` turns the receiver on. `gps_fix` then writes a `gps_fix_t`: `valid`, and signed arcminutes times 10,000 (`lat_min_e4` north, `lon_min_e4` east). That is the PA1616S RMC field (`ddmm.mmmm` / `dddmm.mmmm`), not decimal degrees. Firmware never sees the NMEA string. `gps_power(false)` makes `gps_fix` return no fix. The RAM HAL starts powered. Firmware turns it off after a sample.
 
-The RAM HAL stores one fix (`ram_hal_set_gps`). The emulator turns an east/north foot grid into that fix. The nRF stub parses `$GPRMC` / `$GNRMC` in `firmware/src/nmea.c` when bytes arrive. Status `A` is a fix. Status `V` is no fix.
+The RAM HAL stores one fix (`emu_hal_set_gps`). The emulator turns an east/north foot grid into that fix. The nRF stub parses `$GPRMC` / `$GNRMC` in `firmware/src/nmea.c` when bytes arrive. Status `A` is a fix. Status `V` is no fix.
 
 ### Heading
 
 `heading` writes a `heading_sample_t`: `tilt_deg` off flat, `still` when the accelerometer reads about 1 g, `motor` while a vibe is in progress, and `heading_deg` clockwise from north (`0` = the top of the device points north). It returns false when there is no sample. Firmware (`heading_view`) hides the arrow above 20° of tilt, while moving, and while the motor is running, then waits 400 ms before drawing an 8-way arrow.
 
-The RAM HAL starts flat, still, and facing north (`ram_hal_set_heading`). A vibe stays `motor` until `now_ms` passes the duration. The nRF stub returns false until the LSM303AGR driver exists.
+The RAM HAL starts flat, still, and facing north (`emu_hal_set_heading`). A vibe stays `motor` until `now_ms` passes the duration. The nRF stub returns false until the LSM303AGR driver exists.
 
 ---
 
@@ -82,7 +82,7 @@ Each `beeper_tick`:
 
 1. Loads NVM once (`store_load`).
 2. Ensures a `node_id` (`random_fill` if the store was empty).
-3. If pairing: `pair_tick`. Else: `page_tick`.
+3. If pairing: `pair_tick`. Else: `beeper_sessions_tick`.
 4. `pager_poll_send`.
 5. If no new page this tick: `pager_input`.
 6. `pager_render` → maybe `display_flush`.
@@ -94,7 +94,7 @@ Firmware schedules work with `now_ms()` deadlines. It must **return** and wait f
 
 ## Radio
 
-`radio_send_raw` copies (truncates to `RAW_FRAME_MAX`) and transmits. No loopback. The RAM HAL then calls `on_tx_raw` if the air mesh attached it. `firmware/host/air.c` fans TX out to in-range peers with `ram_hal_push_raw`. Range is host-only.
+`radio_send_raw` copies (truncates to `RAW_FRAME_MAX`) and transmits. No loopback. The RAM HAL then calls `on_tx_raw` if the air mesh attached it. `firmware/host/mesh.c` fans TX out to in-range peers with `emu_hal_push_raw`. Range is host-only.
 
 ---
 

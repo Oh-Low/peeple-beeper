@@ -166,11 +166,11 @@ static size_t encode_slice(beeper_t *b, const inbox_row_t *inbox, int inbox_n,
     if (!w_u8(&w, c->beeple)) return (size_t)-1;
   }
 
-  int canned_n = b->pager.canned.n;
+  int canned_n = b->screen.canned.n;
   if (canned_n > CANNED_SAVED_MAX) canned_n = CANNED_SAVED_MAX;
   if (!w_u8(&w, (uint8_t)canned_n)) return (size_t)-1;
   for (int i = 0; i < canned_n; i++) {
-    if (!w_str(&w, b->pager.canned.saved[i], PAGE_BODY_MAX)) return (size_t)-1;
+    if (!w_str(&w, b->screen.canned.saved[i], PAGE_BODY_MAX)) return (size_t)-1;
   }
 
   if (!w_u16(&w, (uint16_t)inbox_n)) return (size_t)-1;
@@ -198,28 +198,28 @@ static size_t encode_slice(beeper_t *b, const inbox_row_t *inbox, int inbox_n,
   }
   if (!w_u8(&w, b->locate.saved_hh) || !w_u8(&w, b->locate.saved_mm)) return (size_t)-1;
   if (!w_u8(&w, b->locate.track_open ? 1 : 0)) return (size_t)-1;
-  if (!w_u8(&w, b->pager.show_clock_bat ? 1 : 0)) return (size_t)-1;
-  if (!w_u8(&w, b->pager.dark_mode ? 1 : 0)) return (size_t)-1;
-  if (!w_u8(&w, (uint8_t)b->pager.beeple)) return (size_t)-1;
+  if (!w_u8(&w, b->screen.show_clock_bat ? 1 : 0)) return (size_t)-1;
+  if (!w_u8(&w, b->screen.dark_mode ? 1 : 0)) return (size_t)-1;
+  if (!w_u8(&w, (uint8_t)b->screen.beeple)) return (size_t)-1;
   return w.o;
 }
 
 size_t store_encode(beeper_t *b, uint8_t *out, size_t max) {
   inbox_row_t inbox[PAGE_KEEP_MAX];
   outbox_item_t outbox[PAGE_KEEP_MAX];
-  int inbox_n = b->pager.inbox_n;
-  int outbox_n = b->pager.outbox_n;
-  if (inbox_n > 0) memcpy(inbox, b->pager.inbox, (size_t)inbox_n * sizeof(inbox_row_t));
-  if (outbox_n > 0) memcpy(outbox, b->pager.outbox, (size_t)outbox_n * sizeof(outbox_item_t));
+  int inbox_n = b->screen.inbox_n;
+  int outbox_n = b->screen.outbox_n;
+  if (inbox_n > 0) memcpy(inbox, b->screen.inbox, (size_t)inbox_n * sizeof(inbox_row_t));
+  if (outbox_n > 0) memcpy(outbox, b->screen.outbox, (size_t)outbox_n * sizeof(outbox_item_t));
 
   for (;;) {
     size_t n = encode_slice(b, inbox, inbox_n, outbox, outbox_n, out, max);
     if (n == (size_t)-1) return 0;
     if (n <= NVM_BYTES && n <= max) {
-      b->pager.inbox_n = inbox_n;
-      if (inbox_n > 0) memcpy(b->pager.inbox, inbox, (size_t)inbox_n * sizeof(inbox_row_t));
-      b->pager.outbox_n = outbox_n;
-      if (outbox_n > 0) memcpy(b->pager.outbox, outbox, (size_t)outbox_n * sizeof(outbox_item_t));
+      b->screen.inbox_n = inbox_n;
+      if (inbox_n > 0) memcpy(b->screen.inbox, inbox, (size_t)inbox_n * sizeof(inbox_row_t));
+      b->screen.outbox_n = outbox_n;
+      if (outbox_n > 0) memcpy(b->screen.outbox, outbox, (size_t)outbox_n * sizeof(outbox_item_t));
       return n;
     }
     if (inbox_n > 0) inbox_n--;
@@ -337,25 +337,25 @@ bool store_apply(beeper_t *b, const uint8_t *bytes, size_t len) {
   contacts_reset(&b->contacts);
   for (uint16_t i = 0; i < n_contacts; i++) contacts_upsert(&b->contacts, &contacts[i]);
 
-  canned_reset(&b->pager.canned);
-  b->pager.canned.n = n_canned;
+  canned_reset(&b->screen.canned);
+  b->screen.canned.n = n_canned;
   for (uint8_t i = 0; i < n_canned; i++) {
-    str_copy_max(b->pager.canned.saved[i], sizeof b->pager.canned.saved[i], canned[i], PAGE_BODY_MAX);
+    str_copy_max(b->screen.canned.saved[i], sizeof b->screen.canned.saved[i], canned[i], PAGE_BODY_MAX);
   }
 
-  b->pager.inbox_n = n_inbox;
-  if (n_inbox) memcpy(b->pager.inbox, inbox, (size_t)n_inbox * sizeof(inbox_row_t));
-  b->pager.outbox_n = n_out;
-  if (n_out) memcpy(b->pager.outbox, outbox, (size_t)n_out * sizeof(outbox_item_t));
+  b->screen.inbox_n = n_inbox;
+  if (n_inbox) memcpy(b->screen.inbox, inbox, (size_t)n_inbox * sizeof(inbox_row_t));
+  b->screen.outbox_n = n_out;
+  if (n_out) memcpy(b->screen.outbox, outbox, (size_t)n_out * sizeof(outbox_item_t));
   b->locate.saved_fix = saved_fix;
   b->locate.saved_lat = saved_lat;
   b->locate.saved_lon = saved_lon;
   b->locate.saved_hh = saved_hh;
   b->locate.saved_mm = saved_mm;
   b->locate.track_open = track_open;
-  b->pager.show_clock_bat = show_clock_bat;
-  b->pager.dark_mode = dark_mode;
-  pager_set_beeple(&b->pager, beeple);
+  b->screen.show_clock_bat = show_clock_bat;
+  b->screen.dark_mode = dark_mode;
+  screen_set_beeple(&b->screen, beeple);
   return true;
 }
 

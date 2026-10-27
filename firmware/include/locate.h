@@ -1,5 +1,6 @@
 #pragma once
 
+#include "attempt.h"
 #include "contacts.h"
 #include "frames.h"
 #include "hal.h"
@@ -9,8 +10,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define LOCATE_ATTEMPTS 4
-#define LOCATE_RETRY_MS 2000
 /* Wake the receiver on this period and listen this long for one fix. */
 #define GPS_SAMPLE_PERIOD_MS (30u * 60u * 1000u)
 #define GPS_LISTEN_MS (60u * 1000u)
@@ -20,8 +19,6 @@
 #define TRACK_ALLOW_MS (30u * 60u * 1000u)
 #define TRACK_GRANT_MAX 8
 #define TRACK_ASK_MAX 8
-
-struct page_radio;
 
 typedef struct locate_radio locate_radio_t;
 
@@ -37,11 +34,7 @@ typedef enum {
 struct locate_radio {
   locate_status_t status;
   uint8_t dest_id[NODE_ID_LEN];
-  uint8_t nonces[LOCATE_ATTEMPTS][PAGE_NONCE_LEN];
-  int nonce_n;
-  int attempts;
-  uint32_t next_at;
-  bool has_outbox;
+  attempt_t attempt;
   bool has_fix;
   bool has_loc_time;
   uint8_t loc_hh;
@@ -59,14 +52,13 @@ struct locate_radio {
   relay_cache_t relay;
   /* Tests start open. A device with no saved setting asks before it answers. */
   bool track_open;
-  bool ask_pending;
-  uint8_t ask_id[NODE_ID_LEN];
-  uint8_t ask_nonce[PAGE_NONCE_LEN];
+  /* Index 0 is the prompt. TRACK_ASK_MAX more can wait behind it. */
   struct {
     uint8_t id[NODE_ID_LEN];
     uint8_t nonce[PAGE_NONCE_LEN];
-  } ask_wait[TRACK_ASK_MAX];
-  int ask_wait_n;
+  } ask[TRACK_ASK_MAX + 1];
+  int ask_n;
+  bool reply_air;
   bool tracked_note;
   uint8_t tracked_id[NODE_ID_LEN];
   uint32_t tracked_quiet;
@@ -81,17 +73,18 @@ struct locate_radio {
 void locate_init(locate_radio_t *loc);
 void locate_reset(locate_radio_t *loc);
 bool locate_busy(const locate_radio_t *loc);
+bool locate_first_wait_done(const locate_radio_t *loc, uint32_t now);
 locate_status_t locate_status(const locate_radio_t *loc);
 void locate_abort(locate_radio_t *loc);
 
-bool locate_tx(locate_radio_t *loc, struct page_radio *page, const hal_t *hal,
-               const uint8_t *dest_id, identity_store_t *identity, contact_book_t *contacts);
+bool locate_tx(locate_radio_t *loc, const hal_t *hal, const uint8_t *dest_id, contact_book_t *contacts);
 /* Ask again. A failed refresh keeps the last target fix and its time. */
-bool locate_refresh(locate_radio_t *loc, struct page_radio *page, const hal_t *hal,
-                    identity_store_t *identity, contact_book_t *contacts);
+bool locate_refresh(locate_radio_t *loc, const hal_t *hal, contact_book_t *contacts);
 
 void locate_on_raw(locate_radio_t *loc, identity_store_t *identity, contact_book_t *contacts,
                    const hal_t *hal, const raw_frame_t *raw);
+void locate_clear_reply(locate_radio_t *loc);
+bool locate_sent_reply(const locate_radio_t *loc);
 void locate_tick(locate_radio_t *loc, identity_store_t *identity, contact_book_t *contacts,
                  const hal_t *hal);
 /* Power the receiver, keep one fix, then sleep until the next period. */

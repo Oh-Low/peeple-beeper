@@ -2,7 +2,7 @@
 
 Peeple Beeper is a 128×64 FSTN LoRa pager. Firmware is C and runs in a desktop emulator and, later, on the board. Two nearby units can pair, send a short encrypted page, get a receipt, and have neighbors hop that page a couple of hops when the destination is out of direct range.
 
-This file is the app-layer protocol: frame layouts, sizes, crypto, pairing, paging, and mesh relay. Implementation lives in C under `firmware/src` (`frames.c`, `pair.c`, `page.c`, `crypto.c`). Hardware, the HAL, firmware tick/UI, and how the pieces fit together are in [hardware.md](hardware.md), [hal.md](hal.md), [firmware-app.md](firmware-app.md), and [architecture.md](architecture.md).
+This file is the app-layer protocol: frame layouts, sizes, crypto, pairing, paging, and mesh relay. Implementation lives in C under `firmware/src` (`frames.c`, `pair.c`, `message.c`, `crypto.c`). Hardware, the HAL, firmware tick/UI, and how the pieces fit together are in [hardware.md](hardware.md), [hal.md](hal.md), [firmware-app.md](firmware-app.md), and [architecture.md](architecture.md).
 
 **Frame version is 1.** The maximum raw air frame is **128 bytes**.
 
@@ -242,7 +242,7 @@ A composed message becomes one radio **outbox**: dest id, a sealed **`msg_id`** 
 
 `page_tx` looks up the dest in the contact book (unknown dest → no send). It generates `msg_id`, seals `msg_id || beeple || text`, and transmits PAGE with `hop_ttl = 3` (`PAGE_HOP_TTL`: origin plus up to two relay hops).
 
-**TX schedule (9 attempts):** t = 0, 10 s, 20 s, 30 s, then every 60 s at 90 / 150 / 210 / 270 / 330 s. After the last TX the origin waits another 60 s for ACK, then the outbox is **failed**. There is no 10th TX. Constants: `PAGE_ATTEMPTS_FAST = 4`, `PAGE_ATTEMPTS_SLOW = 5`, `PAGE_RETRY_FAST_MS = 10_000`, `PAGE_RETRY_SLOW_MS = 60_000`.
+**TX schedule (9 attempts):** t = 0, 10 s, 20 s, 30 s, then every 60 s at 90 / 150 / 210 / 270 / 330 s. After the last TX the origin waits another 60 s for ACK, then the outbox is **failed**. There is no 10th TX. Constants in `attempt.h`: `ATTEMPT_PAGE_FAST = 4`, `ATTEMPT_PAGE_SLOW = 5`, `ATTEMPT_PAGE_FAST_MS = 10_000`, `ATTEMPT_PAGE_SLOW_MS = 60_000`.
 
 **Each attempt uses a new random nonce.** Same `msg_id` and text. Relays key on `(frame type, src, nonce)`, so a retry is a new flood, not a duplicate of the previous copy.
 
@@ -344,7 +344,7 @@ When tracking is open, a valid LOC_REQ is answered at once and the target shows 
 
 When tracking asks, the target sends nothing until the user picks Allow or Deny. A retry while that prompt is up replaces the nonce, so Allow still matches the request the requester is waiting on. Allow sends the stored fix. For the next 30 minutes (`TRACK_ALLOW_MS`) a request from that same contact is answered at once, with no new prompt and no "is locating you" warning. That grant is kept in RAM: a reboot, a factory reset, or the end of the 30 minutes asks again. Deny does not start the timer. Deny sends `LOC_FLAG_DENY` with coordinates 0. The requester stops and shows `denied`, including when it already had an older fix. Back on the prompt denies.
 
-**Retries.** 4 attempts, 2 seconds apart (`LOCATE_ATTEMPTS`, `LOCATE_RETRY_MS`). After the fourth transmit the requester waits one more 2 seconds, then the screen says **no reply**. A later request, sent when the unit returns to flat and still, uses the same retries. If that one fails, or the contact answers with no sky, the previous target fix and its `Last Loc` time stay. A locate does not start while a page is in flight. A page retry waits while a locate is in flight.
+**Retries.** 4 attempts, 2 seconds apart (`ATTEMPT_LOCATE_BUDGET`, `ATTEMPT_LOCATE_MS` in `attempt.h`). After the fourth transmit the requester waits one more 2 seconds, then the screen says **no reply**. A later request, sent when the unit returns to flat and still, uses the same retries. If that one fails, or the contact answers with no sky, the previous target fix and its `Last Loc` time stay. A page and a locate may both be armed. On each tick a locate attempt, or a locate reply, goes out ahead of a page.
 
 **Distance.** The screen converts the posted arcminutes back to whole feet with the same WGS84 lengths used to build a fix (110574.2725 m per degree of latitude and 111319.4908 m per degree of longitude at the equator, 1 ft = 0.3048 m). One `0.0001` minute is about 0.6 ft, so a 1 ft step posts as 2 quanta and the screen rounds back to 1 ft. Under 1000 ft the line is `75 ft`. At or above 1000 ft it is miles to one decimal. The arrow snaps that offset to eight directions and rotates it by the unit’s heading, so the tip points toward the contact relative to the top of the device.
 
@@ -352,7 +352,7 @@ When tracking asks, the target sends nothing until the user picks Allow or Deny.
 
 ## 9. Host emulator range versus firmware
 
-The host (`firmware/host/air.c`) places units on the **east/north foot grid**. A hop exists only if the straight-line distance is under 100 ft (`RADIO_RANGE_FT`). At **100 ft** the link is silent (no RX).
+The host (`firmware/host/mesh.c`) places units on the **east/north foot grid**. A hop exists only if the straight-line distance is under 100 ft (`RADIO_RANGE_FT`). At **100 ft** the link is silent (no RX).
 
 RSSI is about **−30 dBm** at 0 ft, falling **60 dB** linearly across that span. Pairing still requires **≥ −45 dBm** on top of being in range, so two units can be in paging range on the emulator and still fail to pair.
 
@@ -362,10 +362,10 @@ Firmware paging **does not look at RSSI**. Adding or removing radios rewires the
 
 ## 10. Dispatch and HAL
 
-Tick order (`beeper.c` / `page_tick`):
+Tick order (`beeper.c`):
 
 1. If pairing is active → only `pair_tick` polls raw RX.
-2. Else `page_tick`: drain raw RX (PAGE, PAGE_ACK, LOC_REQ, LOC), then origin retry, then due relays, then locate retry and locate relays.
+2. Else `beeper_sessions_tick`: drain raw RX (PAGE and PAGE_ACK to the message session, LOC_REQ and LOC to locate), then a page retry unless locate is sending, then due relays, then the locate retry and locate relays.
 
 HAL used by this protocol ([hal.md](hal.md)):
 

@@ -12,8 +12,30 @@ typedef struct {
 
 static void on_page(void *user, const page_t *page) {
   tick_ctx_t *c = user;
-  pager_on_page(&c->b->pager, c->hal, page);
+  screen_on_page(&c->b->screen, c->hal, page);
   c->got_page = true;
+}
+
+void beeper_sessions_tick(message_session_t *session, identity_store_t *identity,
+                          contact_book_t *contacts, const hal_t *hal, message_on_page_fn on_page,
+                          void *user, locate_radio_t *locate) {
+  if (locate) locate_clear_reply(locate);
+  raw_frame_t raw;
+  memset(&raw, 0, sizeof raw);
+  while (hal->radio_poll_raw(hal->ctx, &raw)) {
+    int kind = frame_type(raw.bytes, raw.len);
+    if (kind == FRAME_LOC_REQ || kind == FRAME_LOC) {
+      if (locate) locate_on_raw(locate, identity, contacts, hal, &raw);
+      continue;
+    }
+    if (kind == FRAME_HELLO || kind == FRAME_HELLO_ACK || kind == FRAME_PAIR_LEAVE) continue;
+    if (session) message_on_raw(session, identity, contacts, hal, &raw, on_page, user);
+  }
+  if (session && !(locate && (locate_busy(locate) || locate_sent_reply(locate)))) {
+    message_outbox_tick(session, identity, contacts, hal);
+  }
+  if (session) relay_tick(&session->relay, hal);
+  if (locate) locate_tick(locate, identity, contacts, hal);
 }
 
 void beeper_init(beeper_t *b) {
@@ -21,9 +43,9 @@ void beeper_init(beeper_t *b) {
   identity_init(&b->identity);
   contacts_init(&b->contacts);
   pair_init(&b->pair);
-  page_radio_init(&b->radio);
+  message_init(&b->radio);
   locate_init(&b->locate);
-  pager_init(&b->pager, &b->identity, &b->contacts, &b->pair, &b->radio, &b->locate);
+  screen_init(&b->screen, &b->identity, &b->contacts, &b->pair, &b->radio, &b->locate);
   b->nvm_ready = false;
   b->nvm_hash = 0;
 }
@@ -40,35 +62,35 @@ void beeper_tick(beeper_t *b, const hal_t *hal) {
   if (pair_active(&b->pair)) {
     pair_tick(&b->pair, &b->identity, &b->contacts, hal);
     /* A repeat pair replaces the contact, so the count does not grow. */
-    if (!pair_active(&b->pair) && !pair_error(&b->pair)) pager_finish_pair(&b->pager);
+    if (!pair_active(&b->pair) && !pair_error(&b->pair)) screen_finish_pair(&b->screen);
   } else {
-    page_tick(&b->radio, &b->identity, &b->contacts, hal, on_page, &ctx, &b->locate);
+    beeper_sessions_tick(&b->radio, &b->identity, &b->contacts, hal, on_page, &ctx, &b->locate);
   }
 
-  pager_poll_locate(&b->pager);
-  pager_poll_pose(&b->pager, hal);
+  screen_poll_locate(&b->screen);
+  screen_poll_pose(&b->screen, hal);
 
-  pager_poll_send(&b->pager, hal);
-  bool track_grab = pager_poll_track(&b->pager, hal);
+  screen_poll_send(&b->screen, hal);
+  bool track_grab = screen_poll_track(&b->screen, hal);
 
-  if (!ctx.got_page && !track_grab) pager_input(&b->pager, hal);
+  if (!ctx.got_page && !track_grab) screen_input(&b->screen, hal);
 
-  pager_render(&b->pager, hal);
+  screen_render(&b->screen, hal);
   store_sync(b, hal);
 }
 
 int beeper_debug_key(beeper_t *b, const char *key) {
-  return pager_handle_text(&b->pager, key) ? 1 : 0;
+  return screen_handle_text(&b->screen, key) ? 1 : 0;
 }
 
 void beeper_reset(beeper_t *b, const hal_t *hal) {
   identity_reset(&b->identity);
   contacts_reset(&b->contacts);
   pair_reset(&b->pair, hal);
-  page_radio_reset(&b->radio);
+  message_reset(&b->radio);
   locate_reset(&b->locate);
   b->locate.track_open = false;
-  pager_reset(&b->pager);
+  screen_reset(&b->screen);
   b->nvm_ready = true;
   b->nvm_hash = 0;
   store_save(b, hal);

@@ -2,7 +2,6 @@
 
 #include "crypto.h"
 #include "gps.h"
-#include "page.h"
 #include "util.h"
 
 #include <stdio.h>
@@ -22,23 +21,18 @@ bool locate_busy(const locate_radio_t *loc) {
   return loc && loc->status == LOCATE_SENDING;
 }
 
+bool locate_first_wait_done(const locate_radio_t *loc, uint32_t now) {
+  return loc && attempt_first_wait_done(&loc->attempt, now);
+}
+
 locate_status_t locate_status(const locate_radio_t *loc) {
   return loc ? loc->status : LOCATE_IDLE;
 }
 
 void locate_abort(locate_radio_t *loc) {
   if (!loc) return;
-  loc->has_outbox = false;
+  attempt_stop(&loc->attempt);
   loc->status = LOCATE_IDLE;
-  loc->nonce_n = 0;
-  loc->attempts = 0;
-}
-
-static bool nonce_used(const locate_radio_t *loc, const uint8_t *nonce) {
-  for (int i = 0; i < loc->nonce_n; i++) {
-    if (bytes_eq_n(loc->nonces[i], nonce, PAGE_NONCE_LEN)) return true;
-  }
-  return false;
 }
 
 static void put_i32le(uint8_t *p, int32_t v) {
@@ -111,6 +105,7 @@ static void send_loc(locate_radio_t *loc, const hal_t *hal, identity_store_t *id
   if (!n) return;
   relay_mark_seen(&loc->relay, FRAME_LOC, us, nonce);
   hal->radio_send_raw(hal->ctx, frame, n);
+  loc->reply_air = true;
 }
 
 static void note_tracked(locate_radio_t *loc, const hal_t *hal, const uint8_t *src) {
@@ -162,45 +157,31 @@ static void grant_remember(locate_radio_t *loc, const uint8_t *id, uint32_t now)
   loc->grant[slot].until = now + TRACK_ALLOW_MS;
 }
 
-static int ask_wait_slot(const locate_radio_t *loc, const uint8_t *id) {
-  for (int i = 0; i < loc->ask_wait_n; i++) {
-    if (node_id_equal(loc->ask_wait[i].id, id)) return i;
+static int ask_slot(const locate_radio_t *loc, const uint8_t *id) {
+  for (int i = 0; i < loc->ask_n; i++) {
+    if (node_id_equal(loc->ask[i].id, id)) return i;
   }
   return -1;
 }
 
-static void promote_ask(locate_radio_t *loc) {
-  if (loc->ask_wait_n <= 0) {
-    loc->ask_pending = false;
-    return;
+static void drop_ask_head(locate_radio_t *loc) {
+  if (loc->ask_n <= 0) return;
+  loc->ask_n--;
+  if (loc->ask_n > 0) {
+    memmove(&loc->ask[0], &loc->ask[1], (size_t)loc->ask_n * sizeof loc->ask[0]);
   }
-  memcpy(loc->ask_id, loc->ask_wait[0].id, NODE_ID_LEN);
-  memcpy(loc->ask_nonce, loc->ask_wait[0].nonce, PAGE_NONCE_LEN);
-  loc->ask_pending = true;
-  loc->ask_wait_n--;
-  memmove(&loc->ask_wait[0], &loc->ask_wait[1], (size_t)loc->ask_wait_n * sizeof loc->ask_wait[0]);
 }
 
 static void hold_ask(locate_radio_t *loc, const uint8_t *id, const uint8_t *nonce) {
-  if (loc->ask_pending && node_id_equal(loc->ask_id, id)) {
-    memcpy(loc->ask_nonce, nonce, PAGE_NONCE_LEN);
-    return;
-  }
-  int slot = ask_wait_slot(loc, id);
+  int slot = ask_slot(loc, id);
   if (slot >= 0) {
-    memcpy(loc->ask_wait[slot].nonce, nonce, PAGE_NONCE_LEN);
+    memcpy(loc->ask[slot].nonce, nonce, PAGE_NONCE_LEN);
     return;
   }
-  if (!loc->ask_pending) {
-    memcpy(loc->ask_id, id, NODE_ID_LEN);
-    memcpy(loc->ask_nonce, nonce, PAGE_NONCE_LEN);
-    loc->ask_pending = true;
-    return;
-  }
-  if (loc->ask_wait_n >= TRACK_ASK_MAX) return;
-  memcpy(loc->ask_wait[loc->ask_wait_n].id, id, NODE_ID_LEN);
-  memcpy(loc->ask_wait[loc->ask_wait_n].nonce, nonce, PAGE_NONCE_LEN);
-  loc->ask_wait_n++;
+  if (loc->ask_n >= TRACK_ASK_MAX + 1) return;
+  memcpy(loc->ask[loc->ask_n].id, id, NODE_ID_LEN);
+  memcpy(loc->ask[loc->ask_n].nonce, nonce, PAGE_NONCE_LEN);
+  loc->ask_n++;
 }
 
 static void answer_req(locate_radio_t *loc, identity_store_t *identity, contact_book_t *contacts,
@@ -220,17 +201,15 @@ static void answer_req(locate_radio_t *loc, identity_store_t *identity, contact_
 static void try_accept(locate_radio_t *loc, identity_store_t *identity, contact_book_t *contacts,
                        const hal_t *hal, const loc_payload_t *p) {
   (void)hal;
-  if (!loc->has_outbox || loc->status != LOCATE_SENDING) return;
+  if (loc->status != LOCATE_SENDING) return;
   uint8_t us[NODE_ID_LEN];
   identity_get_node_id(identity, us);
-  if (!node_id_equal(p->dest_id, us)) return;
-  if (!node_id_equal(p->src_id, loc->dest_id)) return;
-  if (!nonce_used(loc, p->nonce)) return;
+  if (!attempt_from_peer(&loc->attempt, us, p->dest_id, loc->dest_id, p->src_id, p->nonce)) return;
   const contact_t *contact = contacts_find_by_id(contacts, loc->dest_id);
   if (!contact) return;
   uint8_t plain[LOC_PLAIN_LEN];
   if (!page_open(contact->session_key, p->nonce, p->body, p->body_len, p->mac, plain)) return;
-  loc->has_outbox = false;
+  attempt_stop(&loc->attempt);
   if (plain[0] & LOC_FLAG_DENY) {
     loc->status = LOCATE_DENIED;
     return;
@@ -303,37 +282,33 @@ static bool tx_attempt(locate_radio_t *loc, const hal_t *hal, identity_store_t *
   uint8_t frame[PAGE_ACK_LEN];
   size_t n = frame_encode_loc_req(&req, frame, sizeof frame);
   if (!n) return false;
-  if (loc->nonce_n < LOCATE_ATTEMPTS) {
-    memcpy(loc->nonces[loc->nonce_n], nonce, PAGE_NONCE_LEN);
-    loc->nonce_n++;
-  }
+  if (!attempt_remember(&loc->attempt, nonce)) return false;
   relay_mark_seen(&loc->relay, FRAME_LOC_REQ, us, nonce);
   hal->radio_send_raw(hal->ctx, frame, n);
   return true;
 }
 
-static bool begin_send(locate_radio_t *loc, const hal_t *hal, identity_store_t *identity,
-                       contact_book_t *contacts) {
-  memset(loc->nonces, 0, sizeof loc->nonces);
-  loc->nonce_n = 0;
-  loc->attempts = 0;
-  loc->has_outbox = true;
+typedef struct {
+  locate_radio_t *loc;
+  const hal_t *hal;
+  identity_store_t *identity;
+  contact_book_t *contacts;
+} locate_send_t;
+
+static bool locate_send(void *user) {
+  locate_send_t *send = user;
+  return tx_attempt(send->loc, send->hal, send->identity, send->contacts);
+}
+
+static bool begin_send(locate_radio_t *loc) {
   loc->status = LOCATE_SENDING;
-  if (!tx_attempt(loc, hal, identity, contacts)) {
-    loc->has_outbox = false;
-    loc->status = loc->has_fix ? LOCATE_FOUND : LOCATE_IDLE;
-    return false;
-  }
-  loc->attempts = 1;
-  loc->next_at = hal->now_ms(hal->ctx) + LOCATE_RETRY_MS;
+  attempt_arm(&loc->attempt, ATTEMPT_LOCATE);
   return true;
 }
 
-bool locate_tx(locate_radio_t *loc, struct page_radio *page, const hal_t *hal,
-               const uint8_t *dest_id, identity_store_t *identity, contact_book_t *contacts) {
+bool locate_tx(locate_radio_t *loc, const hal_t *hal, const uint8_t *dest_id, contact_book_t *contacts) {
   if (!loc || !hal || !dest_id) return false;
   if (locate_busy(loc)) return false;
-  if (page && page_busy(page)) return false;
   const contact_t *contact = contacts_find_by_id(contacts, dest_id);
   if (!contact) return false;
 
@@ -342,35 +317,23 @@ bool locate_tx(locate_radio_t *loc, struct page_radio *page, const hal_t *hal,
   loc->has_fix = false;
   loc->has_loc_time = false;
   memcpy(loc->dest_id, dest_id, NODE_ID_LEN);
-  return begin_send(loc, hal, identity, contacts);
+  return begin_send(loc);
 }
 
-bool locate_refresh(locate_radio_t *loc, struct page_radio *page, const hal_t *hal,
-                    identity_store_t *identity, contact_book_t *contacts) {
+bool locate_refresh(locate_radio_t *loc, const hal_t *hal, contact_book_t *contacts) {
   if (!loc || !hal) return false;
   if (loc->status == LOCATE_IDLE || locate_busy(loc)) return false;
-  if (page && page_busy(page)) return false;
   if (!contacts_find_by_id(contacts, loc->dest_id)) return false;
-  return begin_send(loc, hal, identity, contacts);
+  return begin_send(loc);
 }
 
 static void outbox_tick(locate_radio_t *loc, identity_store_t *identity, contact_book_t *contacts,
                         const hal_t *hal) {
-  if (!loc->has_outbox || loc->status != LOCATE_SENDING) return;
-  uint32_t now = hal->now_ms(hal->ctx);
-  if (!time_reached(now, loc->next_at)) return;
-  if (loc->attempts >= LOCATE_ATTEMPTS) {
-    loc->has_outbox = false;
+  if (loc->status != LOCATE_SENDING) return;
+  locate_send_t send = {loc, hal, identity, contacts};
+  if (attempt_step(&loc->attempt, hal->now_ms(hal->ctx), locate_send, &send) == ATTEMPT_DONE) {
     loc->status = loc->has_fix ? LOCATE_FOUND : LOCATE_NO_REPLY;
-    return;
   }
-  if (!tx_attempt(loc, hal, identity, contacts)) {
-    loc->has_outbox = false;
-    loc->status = loc->has_fix ? LOCATE_FOUND : LOCATE_NO_REPLY;
-    return;
-  }
-  loc->attempts += 1;
-  loc->next_at = now + LOCATE_RETRY_MS;
 }
 
 static void gps_power(const hal_t *hal, bool on) {
@@ -419,6 +382,12 @@ void locate_gps_tick(locate_radio_t *loc, const hal_t *hal) {
   if (time_reached(now, loc->gps_next_on)) gps_listen_begin(loc, hal, now);
 }
 
+void locate_clear_reply(locate_radio_t *loc) {
+  if (loc) loc->reply_air = false;
+}
+
+bool locate_sent_reply(const locate_radio_t *loc) { return loc && loc->reply_air; }
+
 void locate_tick(locate_radio_t *loc, identity_store_t *identity, contact_book_t *contacts,
                  const hal_t *hal) {
   if (!loc) return;
@@ -433,23 +402,23 @@ void locate_set_open(locate_radio_t *loc, bool open) {
 
 bool locate_is_open(const locate_radio_t *loc) { return loc && loc->track_open; }
 
-bool locate_ask_pending(const locate_radio_t *loc) { return loc && loc->ask_pending; }
+bool locate_ask_pending(const locate_radio_t *loc) { return loc && loc->ask_n > 0; }
 
 bool locate_ask_id(const locate_radio_t *loc, uint8_t id[NODE_ID_LEN]) {
-  if (!loc || !loc->ask_pending || !id) return false;
-  memcpy(id, loc->ask_id, NODE_ID_LEN);
+  if (!loc || loc->ask_n <= 0 || !id) return false;
+  memcpy(id, loc->ask[0].id, NODE_ID_LEN);
   return true;
 }
 
 static bool answer_pending(locate_radio_t *loc, const hal_t *hal, identity_store_t *identity,
                            contact_book_t *contacts, bool deny) {
-  if (!loc || !loc->ask_pending || !hal) return false;
-  const contact_t *contact = contacts_find_by_id(contacts, loc->ask_id);
+  if (!loc || loc->ask_n <= 0 || !hal) return false;
+  const contact_t *contact = contacts_find_by_id(contacts, loc->ask[0].id);
   uint8_t id[NODE_ID_LEN];
   uint8_t nonce[PAGE_NONCE_LEN];
-  memcpy(id, loc->ask_id, NODE_ID_LEN);
-  memcpy(nonce, loc->ask_nonce, PAGE_NONCE_LEN);
-  promote_ask(loc);
+  memcpy(id, loc->ask[0].id, NODE_ID_LEN);
+  memcpy(nonce, loc->ask[0].nonce, PAGE_NONCE_LEN);
+  drop_ask_head(loc);
   if (!contact) return false;
   send_loc(loc, hal, identity, id, nonce, contact->session_key, deny);
   if (!deny) grant_remember(loc, id, hal->now_ms(hal->ctx));

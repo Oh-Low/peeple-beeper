@@ -1,14 +1,15 @@
 #include "crypto.h"
 #include "frames.h"
 #include "gps.h"
-#include "hal_ram.h"
+#include "emu_hal.h"
 #include "identity.h"
 #include "heading.h"
 #include "locate.h"
 #include "nmea.h"
-#include "nrf_hal.h"
-#include "page.h"
-#include "pager.h"
+#include "beeper_hal.h"
+#include "beeper.h"
+#include "message.h"
+#include "screen.h"
 #include "util.h"
 
 #include <stdio.h>
@@ -50,9 +51,9 @@ typedef struct {
 } tx_log_t;
 
 typedef struct {
-  ram_hal_t ram;
+  emu_hal_t ram;
   hal_t hal;
-  page_radio_t radio;
+  message_session_t radio;
   locate_radio_t locate;
   identity_store_t identity;
   contact_book_t contacts;
@@ -74,19 +75,19 @@ static void id_byte(uint8_t *out, uint8_t n) {
 
 static void make_unit(unit_t *u, uint8_t id) {
   memset(u, 0, sizeof *u);
-  ram_hal_init(&u->ram, &u->hal);
+  emu_hal_init(&u->ram, &u->hal);
   u->ram.on_tx_raw = on_tx;
   u->ram.on_tx_user = &u->tx;
   identity_init(&u->identity);
   id_byte(u->identity.node_id, id);
   u->identity.has_id = true;
   contacts_init(&u->contacts);
-  page_radio_init(&u->radio);
+  message_init(&u->radio);
   locate_init(&u->locate);
 }
 
 static void tick(unit_t *u) {
-  page_tick(&u->radio, &u->identity, &u->contacts, &u->hal, NULL, NULL, &u->locate);
+  beeper_sessions_tick(&u->radio, &u->identity, &u->contacts, &u->hal, NULL, NULL, &u->locate);
 }
 
 static void pair_books(unit_t *a, unit_t *b, const char *name_a, const char *name_b) {
@@ -108,7 +109,7 @@ static void pair_books(unit_t *a, unit_t *b, const char *name_a, const char *nam
 static void set_grid(unit_t *u, int east, int north) {
   gps_fix_t fix;
   gps_from_feet(east, north, &fix);
-  ram_hal_set_gps(&u->ram, &fix);
+  emu_hal_set_gps(&u->ram, &fix);
 }
 
 static int take_sent(unit_t *u, uint8_t frames[][RAW_FRAME_MAX], uint8_t *lens, int max) {
@@ -200,11 +201,11 @@ static void test_nmea(void) {
   CHECK(!fix.valid, "void fix");
 
   hal_t hal;
-  nrf_hal_init(&hal);
+  beeper_hal_init(&hal);
   snprintf(line, sizeof line, "$GPRMC,120000.000,A,0000.0248,N,00000.0246,W,0.00,0.00,091026,,,A");
   finish_nmea(line, sizeof line);
-  for (char *p = line; *p; p++) nrf_gps_push_byte((uint8_t)*p);
-  nrf_gps_push_byte('\n');
+  for (char *p = line; *p; p++) beeper_gps_push_byte((uint8_t)*p);
+  beeper_gps_push_byte('\n');
   CHECK(hal.gps_fix(hal.ctx, &fix), "nRF line buffer yields a fix");
   CHECK_EQ(fix.lat_min_e4, 248, "pushed lat");
   CHECK_EQ(fix.lon_min_e4, -246, "pushed lon");
@@ -212,10 +213,11 @@ static void test_nmea(void) {
 }
 
 static void exchange(unit_t *from, unit_t *to) {
+  tick(from);
   uint8_t frames[TX_MAX][RAW_FRAME_MAX];
   uint8_t lens[TX_MAX];
   int n = take_sent(from, frames, lens, TX_MAX);
-  for (int i = 0; i < n; i++) ram_hal_push_raw(&to->ram, frames[i], lens[i], -40);
+  for (int i = 0; i < n; i++) emu_hal_push_raw(&to->ram, frames[i], lens[i], -40);
   tick(to);
 }
 
@@ -228,7 +230,7 @@ static void test_direct(void) {
   set_grid(&b, 75, 0);
   uint8_t dest[NODE_ID_LEN];
   id_byte(dest, 2);
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "locate");
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "locate");
   exchange(&a, &b);
   uint8_t frames[4][RAW_FRAME_MAX];
   uint8_t lens[4];
@@ -241,7 +243,7 @@ static void test_direct(void) {
   gps_from_feet(75, 0, &expect);
   CHECK_EQ(posted.lat_min_e4, expect.lat_min_e4, "wire lat");
   CHECK_EQ(posted.lon_min_e4, expect.lon_min_e4, "wire lon");
-  ram_hal_push_raw(&a.ram, frames[0], lens[0], -40);
+  emu_hal_push_raw(&a.ram, frames[0], lens[0], -40);
   tick(&a);
   CHECK_EQ(locate_status(&a.locate), LOCATE_FOUND, "found");
   CHECK_EQ(a.locate.their_lon, expect.lon_min_e4, "stored lon");
@@ -249,7 +251,7 @@ static void test_direct(void) {
   locate_format(&a.locate, &a.hal, &view);
   CHECK(strcmp(view.dist, "75 ft") == 0, "75 ft");
   CHECK(view.arrow && view.east_ft > 0 && view.north_ft == 0, "arrow points east");
-  ram_hal_set_gps(&a.ram, NULL);
+  emu_hal_set_gps(&a.ram, NULL);
   locate_format(&a.locate, &a.hal, &view);
   CHECK(strcmp(view.dist, "no own fix") == 0, "no own fix");
   CHECK(!view.arrow, "no arrow without own fix");
@@ -265,7 +267,7 @@ static void test_corner_wire(void) {
   set_grid(&b, -150, 150);
   uint8_t dest[NODE_ID_LEN];
   id_byte(dest, 2);
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "locate");
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "locate");
   exchange(&a, &b);
   uint8_t frames[4][RAW_FRAME_MAX];
   uint8_t lens[4];
@@ -275,7 +277,7 @@ static void test_corner_wire(void) {
   CHECK(open_loc(frames[0], lens[0], &posted), "open");
   CHECK_EQ(posted.lat_min_e4, 248, "carried lat");
   CHECK_EQ(posted.lon_min_e4, -246, "carried lon");
-  ram_hal_push_raw(&a.ram, frames[0], lens[0], -40);
+  emu_hal_push_raw(&a.ram, frames[0], lens[0], -40);
   tick(&a);
   locate_view_t view;
   locate_format(&a.locate, &a.hal, &view);
@@ -292,7 +294,7 @@ static void test_no_sky(void) {
   set_grid(&a, 0, 0);
   uint8_t dest[NODE_ID_LEN];
   id_byte(dest, 2);
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "locate");
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "locate");
   exchange(&a, &b);
   exchange(&b, &a);
   CHECK_EQ(locate_status(&a.locate), LOCATE_NO_SKY, "no sky");
@@ -311,7 +313,8 @@ static void test_unknown_and_mac(void) {
   set_grid(&b, 10, 0);
   uint8_t dest[NODE_ID_LEN];
   id_byte(dest, 2);
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "locate");
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "locate");
+  tick(&a);
   uint8_t frames[4][RAW_FRAME_MAX];
   uint8_t lens[4];
   uint8_t good[RAW_FRAME_MAX];
@@ -320,13 +323,13 @@ static void test_unknown_and_mac(void) {
   memcpy(good, frames[0], lens[0]);
   uint8_t good_len = lens[0];
   frames[0][lens[0] - 1] ^= 0x01;
-  ram_hal_push_raw(&b.ram, frames[0], lens[0], -40);
+  emu_hal_push_raw(&b.ram, frames[0], lens[0], -40);
   tick(&b);
   CHECK_EQ(take_sent(&b, frames, lens, 4), 0, "bad MAC dropped");
 
   unit_t c;
   make_unit(&c, 3);
-  ram_hal_push_raw(&c.ram, good, good_len, -40);
+  emu_hal_push_raw(&c.ram, good, good_len, -40);
   tick(&c);
   CHECK_EQ(take_sent(&c, frames, lens, 4), 0, "unknown contact dropped");
   pass("bad MAC and unknown contact get no reply");
@@ -339,17 +342,18 @@ static void test_no_reply(void) {
   pair_books(&a, &b, "A", "B");
   uint8_t dest[NODE_ID_LEN];
   id_byte(dest, 2);
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "locate");
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "locate");
+  tick(&a);
   uint8_t frames[8][RAW_FRAME_MAX];
   uint8_t lens[8];
   CHECK_EQ(take_sent(&a, frames, lens, 8), 1, "first TX");
-  for (int i = 1; i < LOCATE_ATTEMPTS; i++) {
-    a.ram.now_ms = (uint32_t)(i * LOCATE_RETRY_MS);
+  for (int i = 1; i < ATTEMPT_LOCATE_BUDGET; i++) {
+    a.ram.now_ms = (uint32_t)(i * ATTEMPT_LOCATE_MS);
     tick(&a);
   }
-  CHECK_EQ(take_sent(&a, frames, lens, 8), LOCATE_ATTEMPTS - 1, "retries");
+  CHECK_EQ(take_sent(&a, frames, lens, 8), ATTEMPT_LOCATE_BUDGET - 1, "retries");
   CHECK_EQ(locate_status(&a.locate), LOCATE_SENDING, "still waiting");
-  a.ram.now_ms = LOCATE_ATTEMPTS * LOCATE_RETRY_MS;
+  a.ram.now_ms = ATTEMPT_LOCATE_BUDGET * ATTEMPT_LOCATE_MS;
   tick(&a);
   CHECK_EQ(take_sent(&a, frames, lens, 8), 0, "no fifth TX");
   CHECK_EQ(locate_status(&a.locate), LOCATE_NO_REPLY, "no reply");
@@ -372,7 +376,7 @@ static void test_hop(void) {
   set_grid(&c, 150, 0);
   uint8_t dest[NODE_ID_LEN];
   id_byte(dest, 3);
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "locate");
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "locate");
   exchange(&a, &b);
   CHECK_EQ(b.tx.n, 0, "no TX before jitter");
   relay_once(&b);
@@ -398,35 +402,44 @@ static void test_radio_busy(void) {
   pair_books(&a, &b, "A", "B");
   uint8_t dest[NODE_ID_LEN];
   id_byte(dest, 2);
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "locate starts");
-  CHECK(!page_tx(&a.radio, &a.hal, dest, "hi", &a.identity, &a.contacts, &a.locate, 0),
-        "page waits for locate");
-  page_radio_reset(&a.radio);
-  locate_abort(&a.locate);
-  CHECK(page_tx(&a.radio, &a.hal, dest, "hi", &a.identity, &a.contacts, &a.locate, 0), "page");
-  CHECK(!locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "locate waits for page");
-  page_radio_reset(&a.radio);
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "locate again");
-  memcpy(a.radio.outbox.dest_id, dest, NODE_ID_LEN);
-  str_copy_max(a.radio.body, sizeof a.radio.body, "hi", 2);
-  a.radio.has_outbox = true;
-  a.radio.status = PAGE_SENDING;
-  a.radio.outbox.attempts = 1;
-  a.radio.outbox.next_at = 0;
-  a.tx.n = 0;
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "locate arms");
+  CHECK(message_tx(&a.radio, &a.hal, dest, "hi", &a.contacts, 0), "page arms during locate");
   tick(&a);
   int pages = 0;
+  int reqs = 0;
   for (int i = 0; i < a.tx.n; i++) {
-    if (frame_type(a.tx.frames[i], a.tx.lens[i]) == FRAME_PAGE) pages++;
+    int kind = frame_type(a.tx.frames[i], a.tx.lens[i]);
+    if (kind == FRAME_PAGE) pages++;
+    if (kind == FRAME_LOC_REQ) reqs++;
   }
-  CHECK_EQ(pages, 0, "page retry waits while locate is in flight");
+  CHECK_EQ(pages, 0, "page waits while locate is sending");
+  CHECK_EQ(reqs, 1, "locate takes the tick");
   locate_abort(&a.locate);
   tick(&a);
   pages = 0;
   for (int i = 0; i < a.tx.n; i++) {
     if (frame_type(a.tx.frames[i], a.tx.lens[i]) == FRAME_PAGE) pages++;
   }
-  CHECK(pages >= 1, "page retry runs after locate");
+  CHECK(pages >= 1, "page runs after locate");
+
+  message_reset(&a.radio);
+  locate_abort(&a.locate);
+  a.tx.n = 0;
+  CHECK(message_tx(&a.radio, &a.hal, dest, "hi", &a.contacts, 0), "page");
+  tick(&a);
+  a.tx.n = 0;
+  a.radio.attempt.next_at = 0;
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "locate arms during page");
+  tick(&a);
+  pages = 0;
+  reqs = 0;
+  for (int i = 0; i < a.tx.n; i++) {
+    int kind = frame_type(a.tx.frames[i], a.tx.lens[i]);
+    if (kind == FRAME_PAGE) pages++;
+    if (kind == FRAME_LOC_REQ) reqs++;
+  }
+  CHECK_EQ(pages, 0, "due page yields the tick");
+  CHECK_EQ(reqs, 1, "locate sends while a page is armed");
   pass("locate and page do not transmit together");
 }
 
@@ -487,7 +500,7 @@ static void test_refresh(void) {
   b.ram.mm = 5;
   uint8_t dest[NODE_ID_LEN];
   id_byte(dest, 2);
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "locate");
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "locate");
   exchange(&a, &b);
   exchange(&b, &a);
   CHECK_EQ(locate_status(&a.locate), LOCATE_FOUND, "found");
@@ -503,7 +516,7 @@ static void test_refresh(void) {
   set_grid(&b, 150, 0);
   b.ram.hh = 10;
   b.ram.mm = 15;
-  CHECK(locate_refresh(&a.locate, &a.radio, &a.hal, &a.identity, &a.contacts), "refresh");
+  CHECK(locate_refresh(&a.locate, &a.hal, &a.contacts), "refresh");
   locate_format(&a.locate, &a.hal, &view);
   CHECK(strcmp(view.dist, "50 ft") == 0, "old target until the reply");
   CHECK(strcmp(view.when, "09:05") == 0, "time stays until a new fix");
@@ -516,25 +529,26 @@ static void test_refresh(void) {
   CHECK(strcmp(view.when, "10:15") == 0, "time is the new reply");
 
   kept = a.locate.their_lon;
-  CHECK(locate_refresh(&a.locate, &a.radio, &a.hal, &a.identity, &a.contacts), "refresh again");
+  CHECK(locate_refresh(&a.locate, &a.hal, &a.contacts), "refresh again");
+  tick(&a);
   uint8_t frames[8][RAW_FRAME_MAX];
   uint8_t lens[8];
   take_sent(&a, frames, lens, 8);
-  for (int i = 1; i < LOCATE_ATTEMPTS; i++) {
-    a.ram.now_ms = (uint32_t)(i * LOCATE_RETRY_MS);
+  for (int i = 1; i < ATTEMPT_LOCATE_BUDGET; i++) {
+    a.ram.now_ms = (uint32_t)(i * ATTEMPT_LOCATE_MS);
     tick(&a);
   }
-  a.ram.now_ms = LOCATE_ATTEMPTS * LOCATE_RETRY_MS;
+  a.ram.now_ms = ATTEMPT_LOCATE_BUDGET * ATTEMPT_LOCATE_MS;
   tick(&a);
   CHECK_EQ(locate_status(&a.locate), LOCATE_FOUND, "failed refresh keeps the fix");
   CHECK_EQ(a.locate.their_lon, kept, "old longitude");
   locate_format(&a.locate, &a.hal, &view);
   CHECK(strcmp(view.when, "10:15") == 0, "failed refresh keeps the time");
 
-  ram_hal_set_gps(&b.ram, NULL);
+  emu_hal_set_gps(&b.ram, NULL);
   b.ram.hh = 11;
   b.ram.mm = 0;
-  CHECK(locate_refresh(&a.locate, &a.radio, &a.hal, &a.identity, &a.contacts), "refresh no sky");
+  CHECK(locate_refresh(&a.locate, &a.hal, &a.contacts), "refresh no sky");
   exchange(&a, &b);
   exchange(&b, &a);
   CHECK_EQ(locate_status(&a.locate), LOCATE_FOUND, "no sky keeps the fix");
@@ -562,10 +576,10 @@ static void test_gps_sample(void) {
   CHECK_EQ(b.locate.saved_lon, expect.lon_min_e4, "stored lon");
   CHECK_EQ(b.locate.saved_hh, 8, "stored hour");
 
-  ram_hal_set_gps(&b.ram, NULL);
+  emu_hal_set_gps(&b.ram, NULL);
   uint8_t dest[NODE_ID_LEN];
   id_byte(dest, 2);
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "locate");
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "locate");
   exchange(&a, &b);
   exchange(&b, &a);
   locate_view_t view;
@@ -623,11 +637,11 @@ static void test_track_consent(void) {
   uint8_t dest[NODE_ID_LEN];
   id_byte(dest, 2);
 
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "ask locate");
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "ask locate");
   exchange(&a, &b);
   CHECK_EQ(b.tx.n, 0, "ask holds the reply");
   CHECK(locate_ask_pending(&b.locate), "prompt waiting");
-  a.ram.now_ms = LOCATE_RETRY_MS;
+  a.ram.now_ms = ATTEMPT_LOCATE_MS;
   tick(&a);
   exchange(&a, &b);
   CHECK_EQ(b.tx.n, 0, "retry still waits");
@@ -636,7 +650,7 @@ static void test_track_consent(void) {
   CHECK_EQ(a.locate.status, LOCATE_FOUND, "allowed fix");
 
   b.ram.now_ms = TRACK_ALLOW_MS - 1;
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "refresh in window");
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "refresh in window");
   exchange(&a, &b);
   CHECK(!locate_ask_pending(&b.locate), "no prompt inside 30 min");
   CHECK_EQ(b.tx.n, 1, "refresh answered");
@@ -644,7 +658,7 @@ static void test_track_consent(void) {
   CHECK_EQ(a.locate.status, LOCATE_FOUND, "refresh fix");
 
   b.ram.now_ms = TRACK_ALLOW_MS;
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "deny locate");
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "deny locate");
   exchange(&a, &b);
   CHECK(locate_ask_pending(&b.locate), "asks again after 30 min");
   CHECK(locate_deny(&b.locate, &b.hal, &b.identity, &b.contacts), "deny");
@@ -660,7 +674,7 @@ static void test_track_consent(void) {
   CHECK(!view.arrow, "denied has no arrow");
 
   locate_set_open(&b.locate, true);
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "open locate");
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "open locate");
   exchange(&a, &b);
   CHECK(locate_tracked(&b.locate), "open track warns");
   uint8_t id[NODE_ID_LEN];
@@ -669,13 +683,13 @@ static void test_track_consent(void) {
   exchange(&b, &a);
   locate_clear_tracked(&b.locate);
 
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "quiet locate");
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "quiet locate");
   exchange(&a, &b);
   CHECK(!locate_tracked(&b.locate), "quiet window");
   exchange(&b, &a);
 
   b.ram.now_ms = TRACK_ALLOW_MS + TRACK_WARN_MS;
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "later locate");
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "later locate");
   exchange(&a, &b);
   CHECK(locate_tracked(&b.locate), "warns again after the window");
   pass("tracking asks, denies, and warns when open");
@@ -693,18 +707,18 @@ static void test_track_ask_queue(void) {
   uint8_t dest[NODE_ID_LEN];
   id_byte(dest, 2);
 
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "Ada asks");
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "Ada asks");
   exchange(&a, &b);
-  CHECK(locate_tx(&c.locate, &c.radio, &c.hal, dest, &c.identity, &c.contacts), "Cy asks");
+  CHECK(locate_tx(&c.locate, &c.hal, dest, &c.contacts), "Cy asks");
   exchange(&c, &b);
   uint8_t id[NODE_ID_LEN];
   CHECK(locate_ask_id(&b.locate, id), "prompt waiting");
   CHECK(node_id_equal(id, a.identity.node_id), "prompt is Ada");
 
-  a.ram.now_ms = LOCATE_RETRY_MS;
+  a.ram.now_ms = ATTEMPT_LOCATE_MS;
   tick(&a);
   exchange(&a, &b);
-  c.ram.now_ms = LOCATE_RETRY_MS;
+  c.ram.now_ms = ATTEMPT_LOCATE_MS;
   tick(&c);
   exchange(&c, &b);
   CHECK_EQ(b.tx.n, 0, "retries stay held");
@@ -716,7 +730,7 @@ static void test_track_ask_queue(void) {
   loc_payload_t sent;
   CHECK(frame_decode_loc(b.tx.frames[0], b.tx.lens[0], &sent), "decode Ada's reply");
   CHECK(node_id_equal(sent.dest_id, a.identity.node_id), "reply addressed to Ada");
-  CHECK(bytes_eq_n(sent.nonce, a.locate.nonces[a.locate.nonce_n - 1], PAGE_NONCE_LEN),
+  CHECK(bytes_eq_n(sent.nonce, a.locate.attempt.nonces[a.locate.attempt.nonce_n - 1], PAGE_NONCE_LEN),
         "reply uses Ada's latest nonce");
   exchange(&b, &a);
   CHECK_EQ(a.locate.status, LOCATE_FOUND, "Ada got the fix");
@@ -729,7 +743,7 @@ static void test_track_ask_queue(void) {
   CHECK_EQ(b.tx.n, 1, "one deny");
   CHECK(frame_decode_loc(b.tx.frames[0], b.tx.lens[0], &sent), "decode Cy's reply");
   CHECK(node_id_equal(sent.dest_id, c.identity.node_id), "deny addressed to Cy");
-  CHECK(bytes_eq_n(sent.nonce, c.locate.nonces[c.locate.nonce_n - 1], PAGE_NONCE_LEN),
+  CHECK(bytes_eq_n(sent.nonce, c.locate.attempt.nonces[c.locate.attempt.nonce_n - 1], PAGE_NONCE_LEN),
         "deny uses Cy's latest nonce");
   exchange(&b, &c);
   CHECK_EQ(c.locate.status, LOCATE_DENIED, "Cy was denied");
@@ -745,30 +759,30 @@ static void test_track_prompt_drops_queued_input(void) {
   locate_set_open(&b.locate, false);
   uint8_t dest[NODE_ID_LEN];
   id_byte(dest, 2);
-  CHECK(locate_tx(&a.locate, &a.radio, &a.hal, dest, &a.identity, &a.contacts), "Ada asks");
+  CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "Ada asks");
   exchange(&a, &b);
   CHECK(locate_ask_pending(&b.locate), "pending before the screen");
 
   pair_session_t pair;
   pair_init(&pair);
-  pager_t pager;
-  pager_init(&pager, &b.identity, &b.contacts, &pair, &b.radio, &b.locate);
-  ram_hal_push_encoder(&b.ram, ENC_PRESS);
-  ram_hal_push_back(&b.ram);
-  CHECK(pager_poll_track(&pager, &b.hal), "prompt takes the screen");
-  CHECK_EQ(pager.screen, SCREEN_TRACKASK, "track ask screen");
+  screen_t screen;
+  screen_init(&screen, &b.identity, &b.contacts, &pair, &b.radio, &b.locate);
+  emu_hal_push_encoder(&b.ram, ENC_PRESS);
+  emu_hal_push_back(&b.ram);
+  CHECK(screen_poll_track(&screen, &b.hal), "prompt takes the screen");
+  CHECK_EQ(screen.mode, SCREEN_TRACKASK, "track ask screen");
   CHECK_EQ(b.ram.enc_n, 0, "encoder drained");
   CHECK_EQ(b.ram.back_n, 0, "back drained");
-  pager_input(&pager, &b.hal);
+  screen_input(&screen, &b.hal);
   CHECK(locate_ask_pending(&b.locate), "queued press is not the answer");
-  CHECK_EQ(pager.screen, SCREEN_TRACKASK, "prompt stays up");
+  CHECK_EQ(screen.mode, SCREEN_TRACKASK, "prompt stays up");
 
-  ram_hal_push_encoder(&b.ram, ENC_PRESS);
-  CHECK(!pager_poll_track(&pager, &b.hal), "prompt already up");
+  emu_hal_push_encoder(&b.ram, ENC_PRESS);
+  CHECK(!screen_poll_track(&screen, &b.hal), "prompt already up");
   CHECK_EQ(b.ram.enc_n, 1, "later press stays queued");
-  pager_input(&pager, &b.hal);
+  screen_input(&screen, &b.hal);
   CHECK(!locate_ask_pending(&b.locate), "press on the prompt answers");
-  CHECK_EQ(pager.screen, SCREEN_MENU, "answer leaves the prompt");
+  CHECK_EQ(screen.mode, SCREEN_MENU, "answer leaves the prompt");
   uint8_t flags = 0;
   CHECK_EQ(b.tx.n, 1, "one reply");
   CHECK(loc_flags(b.tx.frames[0], b.tx.lens[0], &flags), "open the reply");

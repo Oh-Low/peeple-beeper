@@ -1,7 +1,7 @@
-#include "air.h"
+#include "mesh.h"
 #include "beeper.h"
 #include "contacts.h"
-#include "hal_ram.h"
+#include "emu_hal.h"
 #include "identity.h"
 #include "seed.h"
 #include "util.h"
@@ -46,29 +46,29 @@ static bool poll_raw_hal(hal_t *hal, uint8_t *out, uint8_t *len) {
 
 static void test_falloff(void) {
   int8_t rssi = 0;
-  CHECK(air_rssi(0, &rssi) && rssi == -30, "at origin");
-  CHECK(air_rssi(75, &rssi), "75ft still on air");
-  CHECK(!air_rssi(RADIO_RANGE_FT, &rssi), "100ft silent");
-  CHECK(!air_rssi(150, &rssi), "150ft silent");
-  CHECK_EQ(air_distance_ft(0, 150), 150, "1 and 3 span");
-  CHECK_EQ(air_distance_ft(0, 75), 75, "1 and 2");
-  CHECK_EQ(air_distance_ft(75, 150), 75, "2 and 3");
+  CHECK(mesh_rssi(0, &rssi) && rssi == -30, "at origin");
+  CHECK(mesh_rssi(75, &rssi), "75ft still on air");
+  CHECK(!mesh_rssi(RADIO_RANGE_FT, &rssi), "100ft silent");
+  CHECK(!mesh_rssi(150, &rssi), "150ft silent");
+  CHECK_EQ(mesh_distance_ft(0, 150), 150, "1 and 3 span");
+  CHECK_EQ(mesh_distance_ft(0, 75), 75, "1 and 2");
+  CHECK_EQ(mesh_distance_ft(75, 150), 75, "2 and 3");
   pass("falloff: linked under 100ft, silent at 100+");
 }
 
 static void test_mesh_hear(void) {
-  ram_hal_t ra, rb, rc;
+  emu_hal_t ra, rb, rc;
   hal_t ha, hb, hc;
-  ram_hal_init(&ra, &ha);
-  ram_hal_init(&rb, &hb);
-  ram_hal_init(&rc, &hc);
+  emu_hal_init(&ra, &ha);
+  emu_hal_init(&rb, &hb);
+  emu_hal_init(&rc, &hc);
   int fa = 0, fb = 75, fc = 150;
-  air_mesh_t mesh;
+  mesh_t mesh;
   memset(&mesh, 0, sizeof mesh);
-  air_mesh_add(&mesh, &ra, &fa, NULL);
-  air_mesh_add(&mesh, &rb, &fb, NULL);
-  air_mesh_add(&mesh, &rc, &fc, NULL);
-  air_mesh_link(&mesh);
+  mesh_add(&mesh, &ra, &fa, NULL);
+  mesh_add(&mesh, &rb, &fb, NULL);
+  mesh_add(&mesh, &rc, &fc, NULL);
+  mesh_link(&mesh);
 
   uint8_t ping[3] = {1, 2, 3};
   ha.radio_send_raw(ha.ctx, ping, sizeof ping);
@@ -82,9 +82,9 @@ static void test_mesh_hear(void) {
   pass("mesh: 0 and 150 do not hear; 75 does");
 }
 
-static void make_dir_unit(emu_unit_t *u, ram_hal_t *ram, hal_t *hal, beeper_t *b, const char *name) {
+static void make_dir_unit(emu_unit_t *u, emu_hal_t *ram, hal_t *hal, beeper_t *b, const char *name) {
   static uint32_t rng = 1001;
-  ram_hal_init(ram, hal);
+  emu_hal_init(ram, hal);
   ram->rng = rng++;
   beeper_init(b);
   beeper_reset(b, hal);
@@ -94,7 +94,7 @@ static void make_dir_unit(emu_unit_t *u, ram_hal_t *ram, hal_t *hal, beeper_t *b
 }
 
 static void test_directory(void) {
-  ram_hal_t ra, rb, rc;
+  emu_hal_t ra, rb, rc;
   hal_t ha, hb, hc;
   static beeper_t ba, bb, bc;
   emu_unit_t ua, ub, uc;
@@ -122,7 +122,7 @@ static void test_directory(void) {
 }
 
 static void test_introduce_forget(void) {
-  ram_hal_t ra, rb, rc, rd;
+  emu_hal_t ra, rb, rc, rd;
   hal_t ha, hb, hc, hd;
   static beeper_t ba, bb, bc, bd;
   emu_unit_t ua, ub, uc, ud;
@@ -155,8 +155,8 @@ static void test_introduce_forget(void) {
   pass("introduce a fourth radio into every contact book; forget drops it");
 }
 
-static void boot_unit(beeper_t *b, ram_hal_t *ram, hal_t *hal, uint32_t rng, const char *name) {
-  ram_hal_init(ram, hal);
+static void boot_unit(beeper_t *b, emu_hal_t *ram, hal_t *hal, uint32_t rng, const char *name) {
+  emu_hal_init(ram, hal);
   ram->rng = rng;
   ram->now_ms = 1000;
   beeper_init(b);
@@ -165,22 +165,22 @@ static void boot_unit(beeper_t *b, ram_hal_t *ram, hal_t *hal, uint32_t rng, con
 }
 
 static void start_add(beeper_t *b, const hal_t *hal) {
-  pair_start(&b->pair, &b->identity, hal, b->pager.beeple);
-  b->pager.screen = SCREEN_PAIR;
+  pair_start(&b->pair, &b->identity, hal, b->screen.beeple);
+  b->screen.mode = SCREEN_PAIR;
 }
 
 static void test_repair_returns(void) {
-  ram_hal_t ra, rb;
+  emu_hal_t ra, rb;
   hal_t ha, hb;
   beeper_t ba, bb;
   boot_unit(&ba, &ra, &ha, 1, "Ada");
   boot_unit(&bb, &rb, &hb, 2, "Bea");
   int fa = 0, fb = 0;
-  air_mesh_t mesh;
+  mesh_t mesh;
   memset(&mesh, 0, sizeof mesh);
-  air_mesh_add(&mesh, &ra, &fa, NULL);
-  air_mesh_add(&mesh, &rb, &fb, NULL);
-  air_mesh_link(&mesh);
+  mesh_add(&mesh, &ra, &fa, NULL);
+  mesh_add(&mesh, &rb, &fb, NULL);
+  mesh_link(&mesh);
 
   emu_unit_t units[2];
   memset(units, 0, sizeof units);
@@ -207,7 +207,7 @@ static void test_repair_returns(void) {
   }
   CHECK(done, "repeat pair finishes");
   CHECK(!pair_error(&ba.pair) && !pair_error(&bb.pair), "repeat pair has no error");
-  CHECK(ba.pager.screen == SCREEN_PEEPLE && bb.pager.screen == SCREEN_PEEPLE, "both leave ADD");
+  CHECK(ba.screen.mode == SCREEN_PEEPLE && bb.screen.mode == SCREEN_PEEPLE, "both leave ADD");
   CHECK_EQ(ba.contacts.n, 1, "book size unchanged");
   uint8_t id_b[NODE_ID_LEN];
   identity_get_node_id(&bb.identity, id_b);
@@ -220,7 +220,7 @@ static void test_repair_returns(void) {
   pass("repeat pair returns to the menu");
 }
 
-static void step_at(beeper_t *ba, beeper_t *bb, ram_hal_t *ra, ram_hal_t *rb, const hal_t *ha,
+static void step_at(beeper_t *ba, beeper_t *bb, emu_hal_t *ra, emu_hal_t *rb, const hal_t *ha,
                     const hal_t *hb, uint32_t t) {
   ra->now_ms = rb->now_ms = 1000 + t;
   beeper_tick(ba, ha);
@@ -228,17 +228,17 @@ static void step_at(beeper_t *ba, beeper_t *bb, ram_hal_t *ra, ram_hal_t *rb, co
 }
 
 static void test_restart_add_new_ephemeral(void) {
-  ram_hal_t ra, rb;
+  emu_hal_t ra, rb;
   hal_t ha, hb;
   beeper_t ba, bb;
   boot_unit(&ba, &ra, &ha, 11, "Ada");
   boot_unit(&bb, &rb, &hb, 12, "Bea");
   int fa = 0, fb = 0;
-  air_mesh_t mesh;
+  mesh_t mesh;
   memset(&mesh, 0, sizeof mesh);
-  air_mesh_add(&mesh, &ra, &fa, NULL);
-  air_mesh_add(&mesh, &rb, &fb, NULL);
-  air_mesh_link(&mesh);
+  mesh_add(&mesh, &ra, &fa, NULL);
+  mesh_add(&mesh, &rb, &fb, NULL);
+  mesh_link(&mesh);
 
   start_add(&ba, &ha);
   start_add(&bb, &hb);
@@ -302,7 +302,7 @@ static void test_restart_add_new_ephemeral(void) {
   }
   CHECK(finished, "new handshake finishes");
   CHECK(!pair_error(&ba.pair) && !pair_error(&bb.pair), "restarted add has no error");
-  CHECK(ba.pager.screen == SCREEN_PEEPLE && bb.pager.screen == SCREEN_PEEPLE, "both leave add");
+  CHECK(ba.screen.mode == SCREEN_PEEPLE && bb.screen.mode == SCREEN_PEEPLE, "both leave add");
   const contact_t *ab = contacts_find_by_id(&ba.contacts, id_b);
   uint8_t id_a[NODE_ID_LEN];
   identity_get_node_id(&ba.identity, id_a);

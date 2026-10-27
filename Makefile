@@ -27,8 +27,8 @@ endif
 FW_SRC := $(wildcard firmware/src/*.c)
 ART_SRC := firmware/art/art.c
 HOST_SRC := $(wildcard firmware/host/*.c)
-HAL_EMU_SRC := hal/emu/hal_ram.c
-HAL_BEEPER_SRC := hal/beeper/nrf_hal.c
+HAL_EMU_SRC := hal/emu/emu_hal.c
+HAL_BEEPER_SRC := hal/beeper/beeper_hal.c
 FW_LINK := $(FW_SRC) $(ART_SRC) $(HOST_SRC) $(HAL_EMU_SRC)
 FW_CORE := $(FW_SRC) $(ART_SRC)
 TEST_DIR := firmware/tests

@@ -1,8 +1,9 @@
 #include "contacts.h"
 #include "frames.h"
-#include "hal_ram.h"
+#include "emu_hal.h"
 #include "identity.h"
-#include "page.h"
+#include "beeper.h"
+#include "message.h"
 #include "relay.h"
 #include "util.h"
 
@@ -46,9 +47,9 @@ typedef struct {
 } tx_log_t;
 
 typedef struct {
-  ram_hal_t ram;
+  emu_hal_t ram;
   hal_t hal;
-  page_radio_t radio;
+  message_session_t radio;
   identity_store_t identity;
   contact_book_t contacts;
   tx_log_t tx;
@@ -86,18 +87,18 @@ static void hex_of(const uint8_t *b, size_t n, char *out, size_t cap) {
 
 static void make_unit(unit_t *u, uint8_t id) {
   memset(u, 0, sizeof *u);
-  ram_hal_init(&u->ram, &u->hal);
+  emu_hal_init(&u->ram, &u->hal);
   u->ram.on_tx_raw = on_tx;
   u->ram.on_tx_user = &u->tx;
   identity_init(&u->identity);
   id_byte(u->identity.node_id, id);
   u->identity.has_id = true;
   contacts_init(&u->contacts);
-  page_radio_init(&u->radio);
+  message_init(&u->radio);
 }
 
 static void tick(unit_t *u) {
-  page_tick(&u->radio, &u->identity, &u->contacts, &u->hal, on_page, u, NULL);
+  beeper_sessions_tick(&u->radio, &u->identity, &u->contacts, &u->hal, on_page, u, NULL);
 }
 
 static void pair_books(unit_t *a, unit_t *b, const char *name_a, const char *name_b) {
@@ -160,8 +161,9 @@ static void test_dest_decrypts_full(void) {
   pair_books(&a, &b, "Alice", "Bob");
   uint8_t dest[NODE_ID_LEN];
   id_byte(dest, 2);
-  CHECK(page_tx(&a.radio, &a.hal, dest, "hi", &a.identity, &a.contacts, NULL, 3), "pageTx");
-  CHECK_EQ(page_send_status(&a.radio), PAGE_SENDING, "status after tx");
+  CHECK(message_tx(&a.radio, &a.hal, dest, "hi", &a.contacts, 3), "pageTx");
+  CHECK_EQ(message_status(&a.radio), MESSAGE_SENDING, "status after tx");
+  tick(&a);
   uint8_t frames[TX_MAX][RAW_FRAME_MAX];
   uint8_t lens[TX_MAX];
   int n = take_sent(&a, frames, lens, TX_MAX);
@@ -170,7 +172,7 @@ static void test_dest_decrypts_full(void) {
   memcpy(g_saved_page, frames[0], lens[0]);
   g_saved_page_len = lens[0];
 
-  ram_hal_push_raw(&b.ram, frames[0], lens[0], -30);
+  emu_hal_push_raw(&b.ram, frames[0], lens[0], -30);
   tick(&b);
   CHECK_EQ(b.page_n, 1, "deliver once");
   CHECK(strcmp(b.pages[0].from, "Alice") == 0, "from contact name");
@@ -182,11 +184,11 @@ static void test_dest_decrypts_full(void) {
   CHECK_EQ(n, 1, "one PAGE_ACK");
   CHECK_EQ(frame_type(frames[0], lens[0]), FRAME_PAGE_ACK, "ACK type");
 
-  ram_hal_push_raw(&a.ram, frames[0], lens[0], -30);
+  emu_hal_push_raw(&a.ram, frames[0], lens[0], -30);
   tick(&a);
-  CHECK_EQ(page_send_status(&a.radio), PAGE_DELIVERED, "sender delivered");
+  CHECK_EQ(message_status(&a.radio), MESSAGE_DELIVERED, "sender delivered");
 
-  ram_hal_push_raw(&b.ram, g_saved_page, g_saved_page_len, -30);
+  emu_hal_push_raw(&b.ram, g_saved_page, g_saved_page_len, -30);
   tick(&b);
   CHECK_EQ(b.page_n, 1, "repeat PAGE does not deliver again");
   n = take_sent(&b, frames, lens, TX_MAX);
@@ -201,14 +203,14 @@ static void test_retries(void) {
   pair_books(&a, &b, "Alice", "Bob");
   uint8_t dest[NODE_ID_LEN];
   id_byte(dest, 2);
-  CHECK(page_tx(&a.radio, &a.hal, dest, "ping", &a.identity, &a.contacts, NULL, 0), "pageTx");
+  CHECK(message_tx(&a.radio, &a.hal, dest, "ping", &a.contacts, 0), "pageTx");
   tick(&a);
 
-  int tx_at[PAGE_ATTEMPTS];
+  int tx_at[ATTEMPT_PAGE_BUDGET];
   tx_at[0] = 0;
   int t = 0;
-  for (int i = 1; i < PAGE_ATTEMPTS; i++) {
-    t += i < 4 ? PAGE_RETRY_FAST_MS : PAGE_RETRY_SLOW_MS;
+  for (int i = 1; i < ATTEMPT_PAGE_BUDGET; i++) {
+    t += i < ATTEMPT_PAGE_FAST ? ATTEMPT_PAGE_FAST_MS : ATTEMPT_PAGE_SLOW_MS;
     tx_at[i] = t;
     a.ram.now_ms = (uint32_t)t;
     tick(&a);
@@ -217,8 +219,8 @@ static void test_retries(void) {
   uint8_t frames[TX_MAX][RAW_FRAME_MAX];
   uint8_t lens[TX_MAX];
   int n = take_sent(&a, frames, lens, TX_MAX);
-  CHECK_EQ(n, PAGE_ATTEMPTS, "9 TX");
-  char hexes[PAGE_ATTEMPTS][17];
+  CHECK_EQ(n, ATTEMPT_PAGE_BUDGET, "9 TX");
+  char hexes[ATTEMPT_PAGE_BUDGET][17];
   for (int i = 0; i < n; i++) {
     page_payload_t p;
     CHECK(frame_decode_page(frames[i], lens[i], &p), "decode PAGE");
@@ -228,14 +230,14 @@ static void test_retries(void) {
     CHECK(strcmp(hexes[i], hexes[0]) != 0, "nonce differs from tx1");
     for (int j = 0; j < i; j++) CHECK(strcmp(hexes[i], hexes[j]) != 0, "nonce unique");
   }
-  CHECK_EQ(page_send_status(&a.radio), PAGE_SENDING, "still sending after last TX");
+  CHECK_EQ(message_status(&a.radio), MESSAGE_SENDING, "still sending after last TX");
   CHECK_EQ(tx_at[3], 30000, "4th TX at 30s");
   CHECK_EQ(tx_at[4], 90000, "5th TX at 90s");
   CHECK_EQ(tx_at[8], 330000, "9th TX at 330s");
 
-  a.ram.now_ms = (uint32_t)(t + PAGE_RETRY_SLOW_MS);
+  a.ram.now_ms = (uint32_t)(t + ATTEMPT_PAGE_SLOW_MS);
   tick(&a);
-  CHECK_EQ(page_send_status(&a.radio), PAGE_FAILED, "failed after last ACK wait");
+  CHECK_EQ(message_status(&a.radio), MESSAGE_FAILED, "failed after last ACK wait");
   n = take_sent(&a, frames, lens, TX_MAX);
   CHECK_EQ(n, 0, "no 10th TX");
   pass("no ACK: 10s then 60s retries, unique nonces, fail after last wait");
@@ -248,13 +250,14 @@ static void test_retry_nonce_ack(void) {
   pair_books(&a, &b, "Alice", "Bob");
   uint8_t dest[NODE_ID_LEN];
   id_byte(dest, 2);
-  CHECK(page_tx(&a.radio, &a.hal, dest, "hi", &a.identity, &a.contacts, NULL, 0), "pageTx");
+  CHECK(message_tx(&a.radio, &a.hal, dest, "hi", &a.contacts, 0), "pageTx");
+  tick(&a);
   uint8_t first[TX_MAX][RAW_FRAME_MAX];
   uint8_t flen[TX_MAX];
   int n = take_sent(&a, first, flen, TX_MAX);
   CHECK_EQ(n, 1, "first TX");
 
-  ram_hal_push_raw(&b.ram, first[0], flen[0], -30);
+  emu_hal_push_raw(&b.ram, first[0], flen[0], -30);
   tick(&b);
   CHECK_EQ(b.page_n, 1, "deliver first copy");
   CHECK(strcmp(b.pages[0].body, "hi") == 0, "body without msg_id");
@@ -263,7 +266,7 @@ static void test_retry_nonce_ack(void) {
   n = take_sent(&b, ack1, alen, TX_MAX);
   CHECK_EQ(n, 1, "ACK nonce 1");
 
-  a.ram.now_ms = PAGE_RETRY_FAST_MS;
+  a.ram.now_ms = ATTEMPT_PAGE_FAST_MS;
   tick(&a);
   uint8_t second[TX_MAX][RAW_FRAME_MAX];
   uint8_t slen[TX_MAX];
@@ -277,15 +280,15 @@ static void test_retry_nonce_ack(void) {
   hex_of(p1.nonce, PAGE_NONCE_LEN, h1, sizeof h1);
   CHECK(strcmp(h0, h1) != 0, "retry nonce differs");
 
-  ram_hal_push_raw(&b.ram, second[0], slen[0], -30);
+  emu_hal_push_raw(&b.ram, second[0], slen[0], -30);
   tick(&b);
   CHECK_EQ(b.page_n, 1, "retry does not deliver again");
   n = take_sent(&b, second, slen, TX_MAX);
   CHECK_EQ(n, 1, "ACK nonce 2");
 
-  ram_hal_push_raw(&a.ram, ack1[0], alen[0], -30);
+  emu_hal_push_raw(&a.ram, ack1[0], alen[0], -30);
   tick(&a);
-  CHECK_EQ(page_send_status(&a.radio), PAGE_DELIVERED, "ACK of first nonce counts");
+  CHECK_EQ(message_status(&a.radio), MESSAGE_DELIVERED, "ACK of first nonce counts");
   pass("retry new nonce: dest delivers once; ACK of first nonce still delivers");
 }
 
@@ -300,7 +303,7 @@ static void test_relay_ttl(void) {
   size_t flen = 0;
   dummy_page(frame, &flen, dest, src, 3, nonce);
   CHECK(flen > 0, "encode PAGE");
-  ram_hal_push_raw(&c.ram, frame, flen, -30);
+  emu_hal_push_raw(&c.ram, frame, flen, -30);
   tick(&c);
   uint8_t sent[TX_MAX][RAW_FRAME_MAX];
   uint8_t lens[TX_MAX];
@@ -318,7 +321,7 @@ static void test_relay_ttl(void) {
   CHECK(strcmp(hx, hn) == 0, "nonce unchanged");
 
   uint32_t second_hear = c.ram.now_ms;
-  ram_hal_push_raw(&c.ram, frame, flen, -30);
+  emu_hal_push_raw(&c.ram, frame, flen, -30);
   tick(&c);
   c.ram.now_ms = second_hear + RELAY_JITTER_MAX_MS;
   tick(&c);
@@ -328,7 +331,7 @@ static void test_relay_ttl(void) {
   make_unit(&c3, 3);
   c3.ram.now_ms = 0;
   dummy_page(frame, &flen, dest, src, 1, nonce);
-  ram_hal_push_raw(&c3.ram, frame, flen, -30);
+  emu_hal_push_raw(&c3.ram, frame, flen, -30);
   tick(&c3);
   c3.ram.now_ms = RELAY_JITTER_MAX_MS;
   tick(&c3);
@@ -346,14 +349,14 @@ static void test_relay_reroll(void) {
   uint8_t frame[RAW_FRAME_MAX];
   size_t flen = 0;
   dummy_page(frame, &flen, dest, src, 3, nonce);
-  ram_hal_push_raw(&c.ram, frame, flen, -30);
+  emu_hal_push_raw(&c.ram, frame, flen, -30);
   tick(&c);
   uint8_t sent[TX_MAX][RAW_FRAME_MAX];
   uint8_t lens[TX_MAX];
   CHECK_EQ(take_sent(&c, sent, lens, TX_MAX), 0, "no TX after first hear");
 
   c.ram.now_ms = 50;
-  ram_hal_push_raw(&c.ram, frame, flen, -30);
+  emu_hal_push_raw(&c.ram, frame, flen, -30);
   tick(&c);
   CHECK_EQ(take_sent(&c, sent, lens, TX_MAX), 0, "no TX after second hear");
 
@@ -382,14 +385,14 @@ static void test_ack_cancels_page(void) {
   uint8_t frame[RAW_FRAME_MAX];
   size_t flen = 0;
   dummy_page(frame, &flen, dest, src, 3, nonce);
-  ram_hal_push_raw(&c.ram, frame, flen, -30);
+  emu_hal_push_raw(&c.ram, frame, flen, -30);
   tick(&c);
   uint8_t sent[TX_MAX][RAW_FRAME_MAX];
   uint8_t lens[TX_MAX];
   CHECK_EQ(take_sent(&c, sent, lens, TX_MAX), 0, "no TX before ACK");
 
   dummy_ack(frame, &flen, src, dest, 3, nonce);
-  ram_hal_push_raw(&c.ram, frame, flen, -30);
+  emu_hal_push_raw(&c.ram, frame, flen, -30);
   tick(&c);
 
   c.ram.now_ms = RELAY_JITTER_MAX_MS;
@@ -413,10 +416,10 @@ static void test_ack_first(void) {
   uint8_t frame[RAW_FRAME_MAX];
   size_t flen = 0;
   dummy_ack(frame, &flen, src, dest, 3, nonce);
-  ram_hal_push_raw(&c.ram, frame, flen, -30);
+  emu_hal_push_raw(&c.ram, frame, flen, -30);
   tick(&c);
   dummy_page(frame, &flen, dest, src, 3, nonce);
-  ram_hal_push_raw(&c.ram, frame, flen, -30);
+  emu_hal_push_raw(&c.ram, frame, flen, -30);
   tick(&c);
   c.ram.now_ms = RELAY_JITTER_MAX_MS;
   tick(&c);
@@ -440,14 +443,14 @@ static void test_ack_reroll(void) {
   uint8_t frame[RAW_FRAME_MAX];
   size_t flen = 0;
   dummy_ack(frame, &flen, dest, src, 3, NULL);
-  ram_hal_push_raw(&c.ram, frame, flen, -30);
+  emu_hal_push_raw(&c.ram, frame, flen, -30);
   tick(&c);
   uint8_t sent[TX_MAX][RAW_FRAME_MAX];
   uint8_t lens[TX_MAX];
   CHECK_EQ(take_sent(&c, sent, lens, TX_MAX), 0, "no ACK TX after first hear");
 
   c.ram.now_ms = 50;
-  ram_hal_push_raw(&c.ram, frame, flen, -30);
+  emu_hal_push_raw(&c.ram, frame, flen, -30);
   tick(&c);
   CHECK_EQ(take_sent(&c, sent, lens, TX_MAX), 0, "no ACK TX after second hear");
 
@@ -473,7 +476,7 @@ static void test_diff_nonce(void) {
   uint8_t frame[RAW_FRAME_MAX];
   size_t flen = 0;
   dummy_page(frame, &flen, dest, src, 3, n1);
-  ram_hal_push_raw(&c.ram, frame, flen, -30);
+  emu_hal_push_raw(&c.ram, frame, flen, -30);
   tick(&c);
   c.ram.now_ms = RELAY_JITTER_MAX_MS;
   tick(&c);
@@ -482,7 +485,7 @@ static void test_diff_nonce(void) {
   CHECK_EQ(take_sent(&c, sent, lens, TX_MAX), 1, "relay first nonce");
 
   dummy_page(frame, &flen, dest, src, 3, n2);
-  ram_hal_push_raw(&c.ram, frame, flen, -30);
+  emu_hal_push_raw(&c.ram, frame, flen, -30);
   tick(&c);
   c.ram.now_ms = RELAY_JITTER_MAX_MS * 2;
   tick(&c);
@@ -510,7 +513,7 @@ static void test_relay_evict(void) {
     memset(nonce, 0, sizeof nonce);
     nonce[0] = (uint8_t)(i + 1);
     dummy_page(frame, &flen, dest, src, 3, nonce);
-    ram_hal_push_raw(&c.ram, frame, flen, -30);
+    emu_hal_push_raw(&c.ram, frame, flen, -30);
     tick(&c);
   }
   uint8_t sent[TX_MAX][RAW_FRAME_MAX];
@@ -535,7 +538,7 @@ static void test_relay_evict(void) {
   memset(nonce, 0, sizeof nonce);
   nonce[0] = 1;
   dummy_page(frame, &flen, dest, src, 3, nonce);
-  ram_hal_push_raw(&c.ram, frame, flen, -30);
+  emu_hal_push_raw(&c.ram, frame, flen, -30);
   tick(&c);
   c.ram.now_ms = RELAY_JITTER_MAX_MS * 2;
   tick(&c);

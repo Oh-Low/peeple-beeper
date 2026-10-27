@@ -1,4 +1,4 @@
-#include "nrf_hal.h"
+#include "beeper_hal.h"
 
 #include "nmea.h"
 
@@ -133,7 +133,7 @@ static bool gps_fix_fn(void *ctx, gps_fix_t *out) {
   return nrf_fix.valid;
 }
 
-void nrf_gps_push_byte(uint8_t byte) {
+void beeper_gps_push_byte(uint8_t byte) {
   if (byte == '\r') return;
   if (byte == '\n') {
     nmea_line[nmea_len] = 0;
@@ -149,7 +149,7 @@ void nrf_gps_push_byte(uint8_t byte) {
   nmea_line[nmea_len++] = (char)byte;
 }
 
-void nrf_hal_init(hal_t *out) {
+void beeper_hal_init(hal_t *out) {
   memset(display, 0, sizeof display);
   rng_ctr = 0;
   whisper = false;

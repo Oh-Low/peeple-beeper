@@ -66,7 +66,7 @@ Default bench is three radios at east 0 / 75 / 150 ft, all at north 0 (A reaches
 - **flat** / **tipped** and **still** / **moving** are the level check. Tipped is 25° off flat. **heading − / +** turns that radio. A step is 15°, Shift is 45°, and 0° means the top of the LCD points north. The compass letter is the 8-way bucket the arrow uses. A locate result asks the unit to hold flat and still before it draws the arrow.
 - **sky** / **no sky** is whether a listen can see satellites. **sample** starts that listen now. The radio stores the fix and then sleeps the receiver. **no sky** during a listen keeps the last stored fix, which is what a locate reply sends.
 - j/k and arrows turn the knob; Enter/Space selects
-- Fake air is 100 ft (`firmware/include/air.h`)
+- Fake air is 100 ft (`firmware/include/mesh.h`)
 - NVM is per user: `~/Library/Application Support/Peeple/Beeper/` on macOS, `~/.local/share/Peeple/Beeper/` on Linux, `%APPDATA%\Peeple\Beeper\` on Windows. A file still named `./emu-nvm-<id>.bin` in the current directory is read once, then saved in that folder.
 
 The host seeds contact books so A/B/C can Compose without walking HELLO. That directory is emulator-only, not part of the air protocol.
@@ -79,4 +79,4 @@ The host seeds contact books so A/B/C can Compose without walking HELLO. That di
 
 ## Porting to hardware
 
-Implement `hal/hal.h` on the board (`hal/beeper/nrf_hal.c` is a stub that must compile). Firmware already calls `hal->foo(hal->ctx, ...)`. Do not keep a TypeScript UI and swap in U8g2.
+Implement `hal/hal.h` on the board (`hal/beeper/beeper_hal.c` is a stub that must compile). Firmware already calls `hal->foo(hal->ctx, ...)`. Do not keep a TypeScript UI and swap in U8g2.

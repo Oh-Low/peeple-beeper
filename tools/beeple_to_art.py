@@ -17,9 +17,8 @@ the background is paper. The packed bytes match firmware/include/art.h.
   python3 tools/beeple_to_art.py --write
 
 --write replaces the matching symbols in art.h and art.c, rewrites the
-Beeple table in pager.c, and sets BEEPLE_N. The first five stay in their
-old order so a saved index still means the same mascot. New files are
-appended in filename order.
+Beeple table in screen.c, and sets BEEPLE_N. Known files keep KNOWN order so a
+saved index still means the same mascot. New files are appended in filename order.
 """
 
 import argparse
@@ -30,7 +29,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = ROOT / "docs" / "BEEPLE PNG"
-PAGER_C = ROOT / "firmware" / "src" / "pager.c"
+SCREEN_C = ROOT / "firmware" / "src" / "screen.c"
 BEEPLE_H = ROOT / "firmware" / "include" / "beeple.h"
 SIZE = 64
 
@@ -161,13 +160,13 @@ def table_text(rows):
 
 
 def write_catalog(rows):
-    pager = PAGER_C.read_text()
+    pager = SCREEN_C.read_text()
     block = table_text(rows)
     pat = r"static const beeple_def_t BEEPLES\[\] = \{.*?\n\};"
     if not re.search(pat, pager, re.S):
-        raise SystemExit("pager.c is missing the BEEPLES table")
+        raise SystemExit("screen.c is missing the BEEPLES table")
     pager = re.sub(pat, block, pager, count=1, flags=re.S)
-    PAGER_C.write_text(pager)
+    SCREEN_C.write_text(pager)
 
     header = BEEPLE_H.read_text()
     if not re.search(r"#define BEEPLE_N \d+", header):
@@ -180,7 +179,7 @@ def write_catalog(rows):
 def main(argv):
     parser = argparse.ArgumentParser(description="Convert Beeple PNGs into 64×64 firmware art.")
     parser.add_argument("pngs", nargs="*", type=Path, help="PNG files (default: docs/BEEPLE PNG)")
-    parser.add_argument("--write", action="store_true", help="update art.h, art.c, pager.c, and beeple.h")
+    parser.add_argument("--write", action="store_true", help="update art.h, art.c, screen.c, and beeple.h")
     args = parser.parse_args(argv)
     packer = load_packer()
     if args.pngs:

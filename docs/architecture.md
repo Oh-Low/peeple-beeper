@@ -14,13 +14,13 @@ The host never implements pairing or PAGE crypto. Firmware never knows about SDL
 flowchart TB
   subgraph host ["Host — emu/ + firmware/host"]
     UI["SDL2 bench / tests"]
-    HALImpl["hal/emu/hal_ram.c"]
-    Air["firmware/host/air.c mesh"]
+    HALImpl["hal/emu/emu_hal.c"]
+    Air["firmware/host/mesh.c"]
     Seed["emu/seed.c contact directory"]
   end
   subgraph fw ["C firmware — firmware/src"]
     Beeper["beeper.c composition root"]
-    Apps["pager · pair · page · store · display"]
+    Apps["screen · pair · message · store · display"]
   end
   Frames["App-layer frames on the air"]
   UI --> HALImpl
@@ -46,8 +46,8 @@ Tick order, frame types, and crypto are in [firmware-app.md](firmware-app.md) an
 | `hal/emu/` | RAM HAL for tests and the desktop emulator. |
 | `hal/beeper/` | Beeper board HAL. Today this is the nRF52840 stub (`make nrf-check`). |
 | `firmware/include/beeper.h` | `beeper_init` / `tick` / `reset` / `debug_key`. |
-| `firmware/src/*.c` | Pager, pair, page, store, display, crypto, frames. |
-| `firmware/host/` | Desktop radio mesh (`air.c`) only. Tests and the emulator. |
+| `firmware/src/*.c` | Screen, message session, pair, locate, store, display, crypto, frames. |
+| `firmware/host/` | Desktop foot-grid and RSSI (`mesh.c`) only. Tests and the emulator. |
 | `firmware/art/` | Generated 1-bit picture bytes (`art.c`). |
 | `firmware/tests/` | `page_test`, `store_test`, `mesh_test`, `locate_test`. |
 | `emu/` | SDL2 window + `seed.c` host directory. |
@@ -58,9 +58,9 @@ Tick order, frame types, and crypto are in [firmware-app.md](firmware-app.md) an
 
 A new `.c` file goes in the directory of its kind. Product logic stays in `firmware/src`. The desktop mesh stays in `firmware/host`. Generated picture bytes stay in `firmware/art`.
 
-Every HAL implementation lives under `hal/`, in a directory named for the machine it drives. `hal/emu` is the emulator. `hal/beeper` is the beeper. A new machine gets `hal/<machine>/` and implements `hal/hal.h`. It does not go in `firmware/src` or `firmware/host`.
+Every HAL file is named for its machine: `hal/emu/emu_hal.c` and `hal/beeper/beeper_hal.c`. A new machine gets `hal/<machine>/<machine>_hal.c` and implements `hal/hal.h`. It does not go in `firmware/src` or `firmware/host`.
 
-`firmware/host/air.c` is the desktop range model: feet and RSSI. The packet path is `frames.c` (byte layout), `crypto.c` (SHA-256 constructions), and `relay.c` (the forward cache). Frame layout, seals, and hop policy do not go in `air.c`.
+`firmware/host/mesh.c` is the desktop range model: feet and RSSI. The packet path is `frames.c` (byte layout), `crypto.c` (SHA-256 constructions), and `relay.c` (the forward cache). Frame layout, seals, and hop policy do not go in `mesh.c`.
 
 ---
 
@@ -68,20 +68,20 @@ Every HAL implementation lives under `hal/`, in a directory named for the machin
 
 A change lands in the file that already owns that decision. When two files would both have to change, the decision has no owner: put it in one place and have the other call it. Two files stay apart when they change for different reasons.
 
-`pager.c` is the screen. `page.c` is the message session. A new file does not take a name one letter away from either. `pair.c`, `page.c`, and `locate.c` are peer sessions on one radio. `beeper.c` is the only place that chooses which session runs on a tick. A new frame kind is dispatched there. `page.c` handles page and page-ack. It does not drain another session's frames, and it does not tick another session. Today `page_tick` still receives locate frames and then calls `locate_tick`. That pump is the shape to finish, and new sessions do not grow under it.
+`screen.c` is the screen. `message.c` is the message session. A new file does not take a name one letter away from either. `message.c`, `pair.c`, and `locate.c` are peer sessions on one radio. `beeper.c` is the only place that chooses which session runs on a tick, and the only place that keeps a page and a locate off the air on that tick. A locate attempt or a locate reply goes first. A new frame kind is dispatched there. `message.c` handles page and page-ack. It does not drain another session's frames, and it does not tick another session.
 
 | Decision | Owner | What stays outside |
 |----------|--------|-------------------|
 | Wire layout of every frame | `frames.c` | Sessions call encode and decode. |
 | SHA-256 session key, seal, ack tag, locate tag | `crypto.c` | Sessions pass bytes in. |
-| Attempt loop for a sealed send: nonce list, attempt count, next-send time, accept a reply only from that peer on a stored nonce while the send is in flight | One helper. A page is nine tries, ten seconds then a minute. A locate is four tries, two seconds apart. Today each session still has its own copy. | Text, mascot, fix, denial, and no-sky stay in the session that owns them. `page.c` and `locate.c` stay two files. |
-| Forward cache: remember a frame, wait 80–400 ms, decrement the hop, send once, cancel a request when its reply is already stored | `relay.c`. `page.c` and `locate.c` each still decide which frames enter a cache. | Sessions hand it a frame. A new entry rule is written once, in `relay.c`. |
+| Attempt loop for a sealed send: nonce list, attempt count, next-send time, accept a reply only from that peer on a stored nonce while the send is in flight | `attempt.c`. A page is nine tries, ten seconds then a minute. A locate is four tries, two seconds apart. The screen asks the session whether the first wait has elapsed. | Text, mascot, fix, denial, and no-sky stay in the session that owns them. `message.c` and `locate.c` stay two files. |
+| Forward cache: remember a frame, wait 80–400 ms, decrement the hop, send once, cancel a request when its reply is already stored | `relay.c`. `message.c` and `locate.c` each still decide which frames enter a cache. | Sessions hand it a frame. A new entry rule is written once, in `relay.c`. |
 | Eight-way cut of a north/east offset, boundary at the tangent of 22.5° | One function. `gps.c` still has a second copy of the cut. | Hold flat, hold still, the 400 ms wait, and the arrow in the device frame stay in `heading.c`. |
 | Empty display name shown as the last four hex digits of the id | `identity.c`. `contacts.c` still has its own copy for a blank paired name. | A contact book calls the identity rule. |
 | Receiver schedule and the stored fix: listen up to a minute about every half hour, keep one fix | Its own unit, called from `beeper_tick`. | The locate nonce list and the Allow/Deny queue stay on the locate session. Locate reads the stored fix when it answers. |
 | RMC sentence | `nmea.c`, the only parser | The board HAL pushes UART bytes into it. The RAM HAL stores a fix the bench already built. |
 | Foot grid, arcminutes, distance | `gps.c` | |
-| Mascot index, menu label, and bitmap | Generated next to `firmware/art/art.c`. The screen indexes the catalog. | `png_to_art.py` packs any PNG. `beeple_to_art.py` writes the bytes and the catalog. Today `--write` still splices the `BEEPLES` table in `pager.c`. Arrows and side decorations are sprites in `art.c`. They are separate from mascot indexes. |
+| Mascot index, menu label, and bitmap | Generated next to `firmware/art/art.c`. The screen indexes the catalog. | `png_to_art.py` packs any PNG. `beeple_to_art.py` writes the bytes and the catalog. Today `--write` still splices the `BEEPLES` table in `screen.c`. Arrows and side decorations are sprites in `art.c`. They are separate from mascot indexes. |
 
 `display.c`, `textedit.c`, `canned.c`, `store.c`, and `emu/font.c` are already one concept each. The bench font is the SDL atlas for the window chrome. The panel font is the 5×7 and 3×6 bitmaps in `display.c`. Leave them apart. Folding `frames.c` or `crypto.c` into a session would put the wire format in whichever session was nearest.
 
@@ -104,7 +104,7 @@ beeper_t
 
 The saved fix and the listen schedule still sit on `locate` today. New schedule fields go with the receiver unit in the table above, not onto the nonce list.
 
-The emulator wraps each unit with a `ram_hal_t`, a name (`A`, `B`, …), and an east/north foot position. The bench starts with three radios at east 0 / 75 / 150, north 0. **+ add** / **− remove** in the top bar grow the bench up to 16; the window widens to keep every LCD on screen. The compass under each LCD moves that unit; the mesh uses the straight-line distance and relinks immediately. Each device is ticked independently (`beeper_tick`).
+The emulator wraps each unit with an `emu_hal_t`, a name (`A`, `B`, …), and an east/north foot position. The bench starts with three radios at east 0 / 75 / 150, north 0. **+ add** / **− remove** in the top bar grow the bench up to 16; the window widens to keep every LCD on screen. The compass under each LCD moves that unit; the mesh uses the straight-line distance and relinks immediately. Each device is ticked independently (`beeper_tick`).
 
 ---
 

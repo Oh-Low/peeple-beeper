@@ -1,6 +1,6 @@
 # Hardware
 
-Peeple Beeper is aimed at a pocket pager: an **nRF52840-class MCU**, an **SX1262 LoRa radio**, a **128×64 1-bit FSTN LCD** with an ST7567-style page buffer, a **rotary encoder** plus **back** button, **vibe** and **beep**, a **PA1616S GPS**, an **LSM303AGR** accelerometer and magnetometer, a **battery**, and a **~100 KB persistent store** for identity, contacts, canned favorites, inbox, and outbox. Firmware is C (`firmware/src`) against `hal/hal.h`. The running desktop app is an SDL2 emulator (`emu/`) with the RAM HAL in `hal/emu`; `hal/beeper/nrf_hal.c` is a compile-only board stub. This document explains why those pieces exist, what they imply for software, and what is real hardware versus emulator-only. It is not a schematic or a BOM.
+Peeple Beeper is aimed at a pocket pager: an **nRF52840-class MCU**, an **SX1262 LoRa radio**, a **128×64 1-bit FSTN LCD** with an ST7567-style page buffer, a **rotary encoder** plus **back** button, **vibe** and **beep**, a **PA1616S GPS**, an **LSM303AGR** accelerometer and magnetometer, a **battery**, and a **~100 KB persistent store** for identity, contacts, canned favorites, inbox, and outbox. Firmware is C (`firmware/src`) against `hal/hal.h`. The running desktop app is an SDL2 emulator (`emu/`) with the RAM HAL in `hal/emu`; `hal/beeper/beeper_hal.c` is a compile-only board stub. This document explains why those pieces exist, what they imply for software, and what is real hardware versus emulator-only. It is not a schematic or a BOM.
 
 ---
 
@@ -28,7 +28,7 @@ flowchart LR
   MCU --- HDG["LSM303AGR<br/>level check + coarse heading"]
 ```
 
-The contract is [`hal/hal.h`](../hal/hal.h). The emulator implementation is [`hal/emu/hal_ram.c`](../hal/emu/hal_ram.c). The beeper board stub is [`hal/beeper/nrf_hal.c`](../hal/beeper/nrf_hal.c). See [HAL](hal.md) and [architecture](architecture.md).
+The contract is [`hal/hal.h`](../hal/hal.h). The emulator implementation is [`hal/emu/emu_hal.c`](../hal/emu/emu_hal.c). The beeper board stub is [`hal/beeper/beeper_hal.c`](../hal/beeper/beeper_hal.c). See [HAL](hal.md) and [architecture](architecture.md).
 
 ---
 
@@ -38,7 +38,7 @@ Each subsection: role, HAL hook, emulator stand-in, hardware still TBD.
 
 ### nRF52840-class MCU
 
-**Role.** Cortex-M4, BLE-capable SoC with enough on-chip flash and RAM for a small UI plus a 100 KB user NVM partition. Firmware is already C; this chip is the board target, and `nrf_hal.c` is the stub that still has to talk to it. BLE is a property of the silicon, not of this product: paging and pairing go over LoRa. SHA-256, menu drawing, and 128-byte frames are all software; the chip class is chosen because that workload plus a dedicated store partition fits without an application processor.
+**Role.** Cortex-M4, BLE-capable SoC with enough on-chip flash and RAM for a small UI plus a 100 KB user NVM partition. Firmware is already C; this chip is the board target, and `beeper_hal.c` is the stub that still has to talk to it. BLE is a property of the silicon, not of this product: paging and pairing go over LoRa. SHA-256, menu drawing, and 128-byte frames are all software; the chip class is chosen because that workload plus a dedicated store partition fits without an application processor.
 
 **HAL hook.** The whole of `hal_t` is what firmware sits on. Time (`now_ms`, `clock`), CSPRNG (`random_fill`), and the other peripherals below.
 
@@ -52,7 +52,7 @@ Each subsection: role, HAL hook, emulator stand-in, hardware still TBD.
 
 **HAL hook.** App air uses `radio_send_raw` / `radio_poll_raw` (copy on poll, empty send is a no-op). `radio_set_whisper` / `radio_whisper` are TX-power mode (see [Power and pairing](#power-and-pairing)). Pairing and encrypted paging both use that raw path.
 
-**Emulator.** [`firmware/host/air.c`](../firmware/host/air.c) fans each TX to other host radios. Units sit on the **east/north foot grid**. A hop exists only if the straight-line distance is under 100 ft (`RADIO_RANGE_FT`). RSSI is **−30 dBm** at 0 ft, falling **60 dB** linearly across that span; at 100 ft the link is silent. Firmware paging has **no RSSI gate**; the 100 ft cutoff is host-only. There are **no collisions, no CAD, no airtime model, no loopback**. Whisper is a bool and does not change emulator RSSI or range. Default bench radios sit at east 0 / 75 / 150, north 0, so A reaches C only through B.
+**Emulator.** [`firmware/host/mesh.c`](../firmware/host/mesh.c) fans each TX to other host radios. Units sit on the **east/north foot grid**. A hop exists only if the straight-line distance is under 100 ft (`RADIO_RANGE_FT`). RSSI is **−30 dBm** at 0 ft, falling **60 dB** linearly across that span; at 100 ft the link is silent. Firmware paging has **no RSSI gate**; the 100 ft cutoff is host-only. There are **no collisions, no CAD, no airtime model, no loopback**. Whisper is a bool and does not change emulator RSSI or range. Default bench radios sit at east 0 / 75 / 150, north 0, so A reaches C only through B.
 
 **TBD.** Module, SPI/DIO wiring, frequency, region (e.g. EU868 vs US915), spreading factor, bandwidth, coding rate, preamble, TX power table (beyond “whisper = min”), antenna, and CAD/LBT. [Radio protocol](radio-protocol.md) is the app layer, not a PHY spec. On the Feather, **D12** is the SX1262 **NRESET** and nothing else. Pulse it at boot, and again only when the radio has stopped answering. `radio_set_whisper` and `radio_send_raw` must not pulse it. Current firmware never pulses a reset pin. `page_radio_reset` only clears RAM.
 
@@ -82,7 +82,7 @@ Each subsection: role, HAL hook, emulator stand-in, hardware still TBD.
 
 **HAL hook.** `back_poll`: **consumed edge** (latched press), not a GPIO level. One true per press.
 
-**Emulator.** Escape calls `ram_hal_push_back` on the focused radio. The RAM HAL counts pending presses and caps that queue at **8**.
+**Emulator.** Escape calls `emu_hal_push_back` on the focused radio. The RAM HAL counts pending presses and caps that queue at **8**.
 
 **TBD.** Switch, pull-up, active level, and debounce.
 
@@ -110,7 +110,7 @@ Each subsection: role, HAL hook, emulator stand-in, hardware still TBD.
 
 **Role.** On-demand locate. A paired beeper asks; this unit replies with the last fix it stored, plus the hour and minute that fix was taken. The screen shows distance and bearing, not a map. The receiver is not left on. About every **30 minutes** firmware drives **EN** high, listens up to **60 seconds** for one fix, stores it, and drives **EN** low again. The first listen starts at boot. No sky during a listen keeps the previous fix. The module’s 10 Hz rate is unused. The default 1 Hz NMEA stream is enough.
 
-**HAL hook.** `gps_power` is the **EN** pin. `gps_fix` returns a fix only while that pin is on, as signed arcminutes times 10,000, the same numbers an RMC sentence posts (`ddmm.mmmm` and `dddmm.mmmm`, N/S and E/W). Firmware does not parse NMEA. `firmware/src/nmea.c` accepts `$GPRMC` / `$GNRMC`. Status `A` is a fix. Status `V` is no sky. The nRF stub keeps a line buffer; `nrf_gps_push_byte` is what a later UART interrupt will call. This tree does not program the nRF52840 UART. The stored fix is in the NVM snapshot (store version 4), along with whether tracking is open or must ask.
+**HAL hook.** `gps_power` is the **EN** pin. `gps_fix` returns a fix only while that pin is on, as signed arcminutes times 10,000, the same numbers an RMC sentence posts (`ddmm.mmmm` and `dddmm.mmmm`, N/S and E/W). Firmware does not parse NMEA. `firmware/src/nmea.c` accepts `$GPRMC` / `$GNRMC`. Status `A` is a fix. Status `V` is no sky. The nRF stub keeps a line buffer; `beeper_gps_push_byte` is what a later UART interrupt will call. This tree does not program the nRF52840 UART. The stored fix is in the NVM snapshot (store version 4), along with whether tracking is open or must ask.
 
 **Pins.** Already in [prototype assembly](prototype-assembly.md): GPS **TX** to Feather **RX**, GPS **RX** to Feather **TX**, **EN** to **D5**, **VIN** and **GND** to the 3.3 V rails. **PPS** is unwired. **D5** is the enable so firmware can shut the receiver off; the breakout's pull-up keeps it on until that pin goes low. The CR1220 only keeps the almanac. **SCL** is the compass clock, not the GPS enable.
 
@@ -158,11 +158,11 @@ Battery math, sleep current, and TX current vs whisper are not in the repo.
 
 ## What the board HAL must implement
 
-**Implement** the `hal_t` table in `hal/hal.h` on the board (replace `hal/beeper/nrf_hal.c`): display buffer + flush, encoder and back event queues, raw radio TX/RX with RSSI and timestamps, whisper as actual min TX, CSPRNG, 100 KB load/save, monotonic ms, wall-clock HH:MM, battery percent, vibe, beep, the GPS fix, and `heading`. Heading is wired on the prototype; the stub’s `heading` still returns no sample. Whisper and send/poll must not pulse **D12**. That pin is the radio reset only.
+**Implement** the `hal_t` table in `hal/hal.h` on the board (replace `hal/beeper/beeper_hal.c`): display buffer + flush, encoder and back event queues, raw radio TX/RX with RSSI and timestamps, whisper as actual min TX, CSPRNG, 100 KB load/save, monotonic ms, wall-clock HH:MM, battery percent, vibe, beep, the GPS fix, and `heading`. Heading is wired on the prototype; the stub’s `heading` still returns no sample. Whisper and send/poll must not pulse **D12**. That pin is the radio reset only.
 
 Firmware is already C. Do not keep a second UI and swap in U8g2 + RadioLib. See [firmware app](firmware-app.md).
 
-nRF52840 + SX1262 + LCD remain a **target** until `nrf_hal.c` talks to real silicon.
+nRF52840 + SX1262 + LCD remain a **target** until `beeper_hal.c` talks to real silicon.
 
 ---
 

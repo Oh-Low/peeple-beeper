@@ -30,6 +30,7 @@
 #define HELLO_ACK_LEN (1 + 1 + NODE_ID_LEN + NODE_ID_LEN + CONFIRM_LEN)
 #define PAGE_FIXED (1 + 1 + NODE_ID_LEN + NODE_ID_LEN + PAGE_NONCE_LEN + 1 + 1 + MAC_LEN)
 #define PAGE_ACK_LEN (1 + 1 + NODE_ID_LEN + NODE_ID_LEN + PAGE_NONCE_LEN + 1 + MAC_LEN)
+#define PAGE_HOP_TTL 3
 #define PAGE_HOP_TTL_OFF (2 + NODE_ID_LEN + NODE_ID_LEN + PAGE_NONCE_LEN)
 /* Plaintext is msg_id || beeple || text. */
 #define PAGE_WIRE_BODY_MAX (PAGE_BODY_MAX + PAGE_MSG_ID_LEN + 1)

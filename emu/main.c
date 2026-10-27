@@ -1,11 +1,10 @@
-/* Desktop bench for the Peeple firmware. One SDL2 window, the RAM HAL, and fake air.
-   Saved contacts go in the per-user app support directory, not the working directory. */
+/* Saved contacts go in the per-user app support directory, not the working directory. */
 
-#include "air.h"
+#include "mesh.h"
 #include "beeper.h"
 #include "font.h"
 #include "gps.h"
-#include "hal_ram.h"
+#include "emu_hal.h"
 #include "locate.h"
 #include "seed.h"
 #include "util.h"
@@ -44,7 +43,7 @@ typedef struct {
 } rect_i;
 
 typedef struct {
-  ram_hal_t ram;
+  emu_hal_t ram;
   hal_t hal;
   beeper_t beeper;
   int east;
@@ -63,7 +62,7 @@ typedef struct {
 static radio_t g_radios[MAX_RADIOS];
 static int g_n;
 static int g_focus;
-static air_mesh_t g_mesh;
+static mesh_t g_mesh;
 static uint32_t g_t0;
 static int g_next_id = 1;
 static char g_nvm_dir[512];
@@ -141,10 +140,10 @@ static void nvm_save_file(radio_t *r) {
 }
 
 static void relink(void) {
-  air_mesh_clear(&g_mesh);
+  mesh_clear(&g_mesh);
   for (int i = 0; i < g_n; i++)
-    air_mesh_add(&g_mesh, &g_radios[i].ram, &g_radios[i].east, &g_radios[i].north);
-  air_mesh_link(&g_mesh);
+    mesh_add(&g_mesh, &g_radios[i].ram, &g_radios[i].east, &g_radios[i].north);
+  mesh_link(&g_mesh);
 }
 
 static void as_units(emu_unit_t *out) {
@@ -157,23 +156,23 @@ static void as_units(emu_unit_t *out) {
 
 static void apply_gps(radio_t *r) {
   if (!r->sky) {
-    ram_hal_set_gps(&r->ram, NULL);
+    emu_hal_set_gps(&r->ram, NULL);
     return;
   }
   gps_fix_t fix;
   gps_from_feet(r->east, r->north, &fix);
-  ram_hal_set_gps(&r->ram, &fix);
+  emu_hal_set_gps(&r->ram, &fix);
 }
 
 static void apply_heading(radio_t *r) {
-  ram_hal_set_heading(&r->ram, r->tilt_deg, r->still, r->heading_deg);
+  emu_hal_set_heading(&r->ram, r->tilt_deg, r->still, r->heading_deg);
 }
 
 static void add_radio(const char *name, int east, int north) {
   if (g_n >= MAX_RADIOS) return;
   radio_t *r = &g_radios[g_n];
   memset(r, 0, sizeof *r);
-  ram_hal_init(&r->ram, &r->hal);
+  emu_hal_init(&r->ram, &r->hal);
   r->id = g_next_id++;
   r->ram.rng = (uint32_t)r->id * 2654435761u + 1;
   r->east = east;
@@ -414,7 +413,7 @@ static void draw_all(void) {
       int8_t rssi;
       int de = g_radios[i].east - g_radios[j].east;
       int dn = g_radios[i].north - g_radios[j].north;
-      if (!air_rssi(gps_hypot_ft(dn, de), &rssi)) continue;
+      if (!mesh_rssi(gps_hypot_ft(dn, de), &rssi)) continue;
       if ((size_t)hp + 1 >= sizeof hears) break;
       hp += snprintf(hears + hp, sizeof hears - (size_t)hp, "%s%s", hp ? "," : "", g_radios[j].name);
     }
@@ -545,26 +544,26 @@ static void on_wheel(int x, int y, int dy) {
   int i = hit_radio(x, y);
   if (i >= 0) g_focus = i;
   if (g_focus < 0 || g_focus >= g_n) return;
-  ram_hal_push_encoder(&g_radios[g_focus].ram, dy < 0 ? ENC_CW : ENC_CCW);
+  emu_hal_push_encoder(&g_radios[g_focus].ram, dy < 0 ? ENC_CW : ENC_CCW);
 }
 
 static void on_key(SDL_Keycode key) {
   if (g_focus < 0 || g_focus >= g_n) return;
   if (key == SDLK_ESCAPE) {
-    ram_hal_push_back(&g_radios[g_focus].ram);
+    emu_hal_push_back(&g_radios[g_focus].ram);
     return;
   }
   if (key == SDLK_DOWN || key == SDLK_j) {
-    ram_hal_push_encoder(&g_radios[g_focus].ram, ENC_CW);
+    emu_hal_push_encoder(&g_radios[g_focus].ram, ENC_CW);
     return;
   }
   if (key == SDLK_UP || key == SDLK_k) {
-    ram_hal_push_encoder(&g_radios[g_focus].ram, ENC_CCW);
+    emu_hal_push_encoder(&g_radios[g_focus].ram, ENC_CCW);
     return;
   }
   if (key == SDLK_RETURN || key == SDLK_KP_ENTER || key == SDLK_SPACE) {
-    ram_hal_push_encoder(&g_radios[g_focus].ram, ENC_PRESS);
-    ram_hal_push_encoder(&g_radios[g_focus].ram, ENC_RELEASE);
+    emu_hal_push_encoder(&g_radios[g_focus].ram, ENC_PRESS);
+    emu_hal_push_encoder(&g_radios[g_focus].ram, ENC_RELEASE);
     return;
   }
   if (key == SDLK_BACKSPACE) beeper_debug_key(&g_radios[g_focus].beeper, "Backspace");
@@ -585,8 +584,8 @@ static void handle_event(const SDL_Event *e) {
   }
   if (e->type == SDL_MOUSEBUTTONUP && e->button.button == SDL_BUTTON_LEFT) {
     if (g_lcd_click && !g_dragging && g_focus >= 0 && g_focus < g_n) {
-      ram_hal_push_encoder(&g_radios[g_focus].ram, ENC_PRESS);
-      ram_hal_push_encoder(&g_radios[g_focus].ram, ENC_RELEASE);
+      emu_hal_push_encoder(&g_radios[g_focus].ram, ENC_PRESS);
+      emu_hal_push_encoder(&g_radios[g_focus].ram, ENC_RELEASE);
     }
     g_dragging = false;
     g_lcd_click = false;
@@ -596,11 +595,11 @@ static void handle_event(const SDL_Event *e) {
     if (e->motion.yrel != 0) g_dragging = true;
     g_drag_acc += (float)e->motion.yrel;
     while (g_drag_acc >= 8.f) {
-      ram_hal_push_encoder(&g_radios[g_focus].ram, ENC_CW);
+      emu_hal_push_encoder(&g_radios[g_focus].ram, ENC_CW);
       g_drag_acc -= 8.f;
     }
     while (g_drag_acc <= -8.f) {
-      ram_hal_push_encoder(&g_radios[g_focus].ram, ENC_CCW);
+      emu_hal_push_encoder(&g_radios[g_focus].ram, ENC_CCW);
       g_drag_acc += 8.f;
     }
     return;

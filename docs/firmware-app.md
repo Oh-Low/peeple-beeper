@@ -24,10 +24,10 @@ Every tick until NVM has been read, then every tick after:
 
 1. **`store_load`** — one-shot. Blob into identity, contacts, canned favorites, inbox, outbox. Empty or corrupt store → empty RAM.
 2. **`identity_load_or_create`** — if `node_id` is still null, invent 8 random bytes. Display name may still be empty (HELLO then uses the last four hex of the id).
-3. **Pair *or* page** — if Add-contact is live, only `pair_tick`. Otherwise `page_tick` (RX, origin retry, relays). A successful pair that grew the book jumps UI to the menu.
-4. **`pager_poll_send`** — radio status `delivered` / `failed` updates the matching outbox row.
+3. **Pair *or* page** — if Add-contact is live, only `pair_tick`. Otherwise `beeper_sessions_tick` (RX, origin retry, relays). A successful pair that grew the book jumps UI to the menu.
+4. **`screen_poll_send`** — radio status `delivered` / `failed` updates the matching outbox row.
 5. **Input** — skipped on a tick that just received a page (alert holds; encoder/back stay queued).
-6. **`pager_render`** — draw 128×64, copy to the HAL buffer, flush if pixels changed.
+6. **`screen_render`** — draw 128×64, copy to the HAL buffer, flush if pixels changed.
 7. **`store_sync`** — encode RAM; save only if the blob hash changed.
 
 UI always starts on **menu**. Contacts, canned, inbox, and outbox are already in RAM before the first paint of a restored device.
@@ -43,11 +43,11 @@ Assume two units already paired (see [Pairing UX](#pairing-ux-vs-protocol)).
 1. Menu → **Compose** (knob to the row, shaft **press**). Empty book shows `pair first`.
 2. Contact column: press a name. That sets `compose_dest` and moves the highlight to the message column.
 3. Message column: hearted favorites (newest first), stock lines (`On my way`, `Running late`, …), then **Custom** at the bottom. Press a stock line.
-4. `send_page` starts radio TX, inserts an outbox row at index 0 (`status: sending`, local sent HH:MM, ack clocks `CLOCK_NONE`), and opens **Sending**: the contact name, `SEARCHING`, and your current Beeple on the right. That screen stays up for about 10 seconds (`PAGE_RETRY_FAST_MS`), then changes to **Retry** while the radio keeps its full attempt schedule. An ACK still opens **Success**. Back leaves Sending or Retry for Outbox. Menu Outbox shows `Outbox (*)` while the radio is busy.
+4. `send_page` starts radio TX, inserts an outbox row at index 0 (`status: sending`, local sent HH:MM, ack clocks `CLOCK_NONE`), and opens **Sending**: the contact name, `SEARCHING`, and your current Beeple on the right. That screen stays up until the attempt's first wait elapses (`ATTEMPT_PAGE_FAST_MS`, 10 seconds), then changes to **Retry** while the radio keeps its full attempt schedule. An ACK still opens **Success**. Back leaves Sending or Retry for Outbox. Menu Outbox shows `Outbox (*)` while the radio is busy.
 
 **Receipt**
 
-5. Dest decrypts, ACKs. Origin `page_tick` sets radio `delivered`. Next `pager_poll_send` marks the first `sending` outbox row **sent**, stamps **ack** HH:MM from `hal->clock`, and (unless you are pairing, alerting, or editing text) opens **Success**: `BEEP` / `SUCCESS!`, with your current Beeple on the right.
+5. Dest decrypts, ACKs. Origin `beeper_sessions_tick` sets radio `delivered`. Next `screen_poll_send` marks the first `sending` outbox row **sent**, stamps **ack** HH:MM from `hal->clock`, and (unless you are pairing, alerting, or editing text) opens **Success**: `BEEP` / `SUCCESS!`, with your current Beeple on the right.
 6. Press or Back returns to Outbox. Open the row: title `delivered`, `sent HH:MM  ack HH:MM`.
 
 **No receipt**
@@ -56,13 +56,13 @@ Assume two units already paired (see [Pairing UX](#pairing-ux-vs-protocol)).
 
 **Read an incoming page**
 
-`pager_on_page` inserts the inbox row at index 0, vibes 250 ms, beeps 80 ms, flashes the full LCD ~400 ms, and opens **New beep**: slanted `NEW BEEP` bar, the sender and received time, the message wrapped on the left, and the sender's Beeple in the right half. A sender with no Beeple yet keeps the spider. The index arrives inside the sealed page and is saved on that contact. Pairing also carries it. Press or Back → full **read** (from, time, body, RSSI). Press again → Inbox list (`HH:MM from  body`). Inbox `(n)` on the menu is **kept row count**, not an unread flag — there is no read/unread bit.
+`screen_on_page` inserts the inbox row at index 0, vibes 250 ms, beeps 80 ms, flashes the full LCD ~400 ms, and opens **New beep**: slanted `NEW BEEP` bar, the sender and received time, the message wrapped on the left, and the sender's Beeple in the right half. A sender with no Beeple yet keeps the spider. The index arrives inside the sealed page and is saved on that contact. Pairing also carries it. Press or Back → full **read** (from, time, body, RSSI). Press again → Inbox list (`HH:MM from  body`). Inbox `(n)` on the menu is **kept row count**, not an unread flag — there is no read/unread bit.
 
 ---
 
 ## Screen map
 
-`pager_screen_t` in `firmware/include/pager.h`. Selection is an inverted row, not a `>` glyph. List screens use `sel == 0` as `< back`, except Inbox, Outbox, and the compose columns, whose rows are the entries. Settings uses `BACK`. Opening a non-empty list starts on row 1. Inbox, Outbox, and Compose open on the first entry.
+`screen_mode_t` in `firmware/include/screen.h`. Selection is an inverted row, not a `>` glyph. List screens use `sel == 0` as `< back`, except Inbox, Outbox, and the compose columns, whose rows are the entries. Settings uses `BACK`. Opening a non-empty list starts on row 1. Inbox, Outbox, and Compose open on the first entry.
 
 Encoder **turn** is ignored on alert, read, pair, sending, sent, failed, outread, locating, and locread (those are press/back only). Pair, sending, and locating also ignore press.
 
@@ -91,9 +91,9 @@ Encoder **turn** is ignored on alert, read, pair, sending, sent, failed, outread
 | `locread` | With a fix and a settled compass: distance, an arrow toward the target, and `You're looking:` plus the direction this beeper is facing. `hold flat`, `hold still`, `do not move`, `no sky`, `no reply`, `no own fix`, and `radio busy` are unchanged. Denied is `DENIED.` / `THIS IS` / `devastating.` | Contact list | Contact list |
 | `nameedit` | Textedit, no ♥ | OK saves name | Settings, name selected |
 
-Menu select indices: 0 Inbox, 1 Compose, 2 Outbox, 3 Peeple, 4 Settings, 5 Beeple. With Show Clock & Bat on, the clock and battery share the top row of the left half and the words use an 8 px pitch, and all six rows fit. With it off, the words use a 10 px pitch and the clock stays off that screen, so Beeple scrolls in. The Peeple menu uses that same layout for Locate and Contact. The selected row is a bar with the bottom-right corner cut at 45 degrees, and it stops one pixel short of the picture. The picture is the saved Beeple (`pager_set_beeple`). Voidfarer is index 0 and starts selected. The choice is saved with the store. Settings rows (`SET_BACK` … `SET_VIBE`, count `SET_N`): BACK, NAME, TRACKING (`ask` or `open`), CLOCK BAT, DARK MODE, VIBE TEST. Names are capitals in the 3×6 font and stay left of pixel 63. Values sit on the right. The selected name is a bar with the bottom-right corner cut at 45 degrees. `settings_scroll` keeps that row on screen; five rows fit, and further rows scroll. CLOCK BAT is saved with the store and starts on. DARK MODE is saved and starts off. When it is on, `pager_render` inverts the finished frame, so every screen flips.
+Menu select indices: 0 Inbox, 1 Compose, 2 Outbox, 3 Peeple, 4 Settings, 5 Beeple. With Show Clock & Bat on, the clock and battery share the top row of the left half and the words use an 8 px pitch, and all six rows fit. With it off, the words use a 10 px pitch and the clock stays off that screen, so Beeple scrolls in. The Peeple menu uses that same layout for Locate and Contact. The selected row is a bar with the bottom-right corner cut at 45 degrees, and it stops one pixel short of the picture. The picture is the saved Beeple (`screen_set_beeple`). Voidfarer is index 0 and starts selected. The choice is saved with the store. Settings rows (`SET_BACK` … `SET_VIBE`, count `SET_N`): BACK, NAME, TRACKING (`ask` or `open`), CLOCK BAT, DARK MODE, VIBE TEST. Names are capitals in the 3×6 font and stay left of pixel 63. Values sit on the right. The selected name is a bar with the bottom-right corner cut at 45 degrees. `settings_scroll` keeps that row on screen; five rows fit, and further rows scroll. CLOCK BAT is saved with the store and starts on. DARK MODE is saved and starts off. When it is on, `screen_render` inverts the finished frame, so every screen flips.
 
-**Locate.** Empty book shows `pair first`. If a page is in flight, the screen says `radio busy` and does not transmit. Otherwise the contact replies once when tracking is open. A unit set to `Tracking: ask` holds the reply until Allow or Deny. Allow sends the stored fix and, for 30 minutes, answers later requests from that contact with no new prompt. Deny answers with no coordinates and the requester shows `denied`. Back on that prompt denies. Open tracking still warns the target: the screen says the contact `is locating you`. A repeat from the same contact inside 12 seconds does not raise that warning again. A device with no saved setting asks. Settings → Tracking switches `ask` and `open`. With both fixes the distance is whole feet (`75 ft`, or miles to one decimal at 1000 ft and up). The arrow waits on the compass. Tip past 20° and the screen says `hold flat`. Shake it, walk with it, or run the vibration motor and it says `hold still`. Held flat and still, it says `do not move` for 400 ms, then draws an 8-way arrow in the device frame: the top of the screen is whatever way the unit is facing. Under the distance, `Last Loc : HH:MM` is the target’s clock when it stored that fix, not when the reply arrived. Each unit powers the receiver for up to 60 seconds about every 30 minutes, stores one fix, and turns the receiver off. The first listen is at boot. A locate reply sends the stored fix. No sky during a listen keeps the previous fix and its time. Leaving flat or still and settling again asks the target for that store. If that reply is missing, or the target has never stored a fix, the arrow stays on the previous target fix and the time does not change. This unit’s own arrow uses a live fix while the receiver is on, and the stored fix while it is off. Returning to flat and still turns the receiver on for one reading and stores that position before the arrow is drawn. Coordinates stay on the air and are not drawn. `no sky` means they have never stored a fix. `no own fix` has no arrow. `no reply` is four attempts, two seconds apart. Back aborts a locate in progress. The result stays in RAM and is not written to the store.
+**Locate.** Empty book shows `pair first`. A locate starts even while a page is armed: the tick sends the locate and holds the page. `radio busy` is the screen when this locate is already sending. Otherwise the contact replies once when tracking is open. A unit set to `Tracking: ask` holds the reply until Allow or Deny. Allow sends the stored fix and, for 30 minutes, answers later requests from that contact with no new prompt. Deny answers with no coordinates and the requester shows `denied`. Back on that prompt denies. Open tracking still warns the target: the screen says the contact `is locating you`. A repeat from the same contact inside 12 seconds does not raise that warning again. A device with no saved setting asks. Settings → Tracking switches `ask` and `open`. With both fixes the distance is whole feet (`75 ft`, or miles to one decimal at 1000 ft and up). The arrow waits on the compass. Tip past 20° and the screen says `hold flat`. Shake it, walk with it, or run the vibration motor and it says `hold still`. Held flat and still, it says `do not move` for 400 ms, then draws an 8-way arrow in the device frame: the top of the screen is whatever way the unit is facing. Under the distance, `Last Loc : HH:MM` is the target’s clock when it stored that fix, not when the reply arrived. Each unit powers the receiver for up to 60 seconds about every 30 minutes, stores one fix, and turns the receiver off. The first listen is at boot. A locate reply sends the stored fix. No sky during a listen keeps the previous fix and its time. Leaving flat or still and settling again asks the target for that store. If that reply is missing, or the target has never stored a fix, the arrow stays on the previous target fix and the time does not change. This unit’s own arrow uses a live fix while the receiver is on, and the stored fix while it is off. Returning to flat and still turns the receiver on for one reading and stores that position before the arrow is drawn. Coordinates stay on the air and are not drawn. `no sky` means they have never stored a fix. `no own fix` has no arrow. `no reply` is four attempts, two seconds apart. Back aborts a locate in progress. The result stays in RAM and is not written to the store.
 
 ---
 
@@ -144,7 +144,7 @@ Times are **local device clock**, not on the air. `stamp_clock` reads `hal->cloc
 | Row | from, body, rssi, `received_ms`, received HH:MM | dest id, to, body, status, sent HH:MM, ack HH:MM |
 | List | `14:32 Bob  On my way` | `* 14:32 Bob  On my way` |
 
-Outbox status is the middle column: `Fail` when failed, `Retry` while sending, and the sent time once it is delivered. Only **one** radio send at a time (`page_busy`). Retry is UI: failed row → `page_tx` again (new `msg_id` / nonces). Attempt counts shown on outread come from `page_outbox_attempts` / `PAGE_ATTEMPTS` (9). Schedule details: [radio-protocol.md](radio-protocol.md).
+Outbox status is the middle column: `Fail` when failed, `Retry` while sending, and the sent time once it is delivered. Only **one** radio send at a time (`page_busy`). Retry is UI: failed row → `page_tx` again (new `msg_id` / nonces). Attempt counts shown on outread come from `message_outbox_attempts` / `message_outbox_budget` (9). Schedule details: [radio-protocol.md](radio-protocol.md).
 
 ---
 
@@ -186,7 +186,7 @@ Not persisted: pair session, page-radio TX/retry RAM, seen/relay caches, current
 
 ## Alerts
 
-On a new page (`pager_on_page`):
+On a new page (`screen_on_page`):
 
 - `hal->vibe(hal->ctx, 250)` and `hal->beep(hal->ctx, 80)`
 - `alert` copy of the page, `flash_start` / `FLASH_MS` (400) for a full-buffer invert
@@ -202,11 +202,11 @@ Stay inside `firmware/src`. Call `hal->foo(hal->ctx, ...)` only — **no SDL, no
 
 Checklist when you add/rename a menu row:
 
-1. Menu labels (`MENU_N`, `MENU_PEEPLE`, `MENU_SETTINGS`, `MENU_BEEPLE`). Locate and Add live on the Peeple menu (`PEEP_LOCATE`, `PEEP_CONTACT`). The right-hand picture is `pager_set_menu_art`, not a menu row.
+1. Menu labels (`MENU_N`, `MENU_PEEPLE`, `MENU_SETTINGS`, `MENU_BEEPLE`). Locate and Add live on the Peeple menu (`PEEP_LOCATE`, `PEEP_CONTACT`). The right-hand picture is `screen_set_menu_art`, not a menu row.
 2. `on_turn` clamp (`MENU_N` on the menu, `SET_N` on settings). A new settings row needs a `SET_` index, a label, a value, an `on_press` case, and `SET_N` grows the scroll window.
 3. `on_press` indices and `on_back` restore (`sel` of the item you came from).
 4. `draw_menu` label array (Inbox count, Outbox `*`). Clock and battery follow `show_clock_bat`.
-5. Any new screen: `pager_screen_t`, `on_turn` / `on_press` / `on_back`, `pager_render` branch, list `sel == 0` back row if it is a list.
+5. Any new screen: `screen_mode_t`, `on_turn` / `on_press` / `on_back`, `screen_render` branch, list `sel == 0` back row if it is a list.
 
 Do not encode selection as ASCII `>`. Keep invert-rect lists.
 
@@ -224,9 +224,10 @@ Do not encode selection as ASCII `>`. Keep invert-rect lists.
 | File | Role |
 |------|------|
 | `firmware/src/beeper.c` | Compose one device; tick order; text hook; reset |
-| `firmware/src/pager.c` | Screens, menus, inbox/outbox RAM, compose, settings, draw |
+| `firmware/src/screen.c` | Screens, menus, inbox/outbox RAM, compose, settings, draw |
 | `firmware/src/pair.c` | Add-contact session (HELLO UX + whisper) |
-| `firmware/src/page.c` | Encrypted send/retry/ACK/relay; drains LOC frames into locate |
+| `firmware/src/message.c` | Encrypted page send, retry, and ack |
+| `firmware/src/attempt.c` | Nonce list, attempt count, next-send time, in-flight reply check |
 | `firmware/src/locate.c` | On-demand locate request, reply, retry, relay |
 | `firmware/src/gps.c` | Foot grid ↔ arcminutes, distance, bearing, RMC text |
 | `firmware/src/heading.c` | Flat / still gate, then an 8-way arrow in the device frame |
@@ -254,8 +255,8 @@ Do not encode selection as ASCII `>`. Keep invert-rect lists.
 | `CANNED_SAVED_MAX` | 16 | `canned.h` (persisted) |
 | `PAIR_WINDOW_MS` | 20 000 | `pair.h` |
 | `PAIR_RSSI_MIN` | −45 dBm | `pair.h` |
-| `LOCATE_ATTEMPTS` | 4 | `locate.h` |
-| `LOCATE_RETRY_MS` | 2000 | `locate.h` |
+| `ATTEMPT_LOCATE_BUDGET` | 4 | `attempt.h` |
+| `ATTEMPT_LOCATE_MS` | 2000 | `attempt.h` |
 | `TRACK_ALLOW_MS` | 30 min | `locate.h` |
 
 ---
