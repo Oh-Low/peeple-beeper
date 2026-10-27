@@ -305,7 +305,7 @@ B and C both hear A’s PAGE and arm jitter. B transmits first. C hears B’s co
 
 Cancel PAGE relay only when a PAGE_ACK for that origin+nonce is heard: dest already has the plaintext, further PAGE hops are wasted. Do **not** apply that cancel to ACK relays. If C cancelled its ACK because it heard B’s ACK, and B cannot reach A, A never gets a receipt.
 
-`firmware/tests/page_test.c` encodes these rules: ttl decrement once, ttl=1 dropped, second hear before TX re-rolls still one TX, PAGE_ACK cancels pending PAGE, ACK-first then PAGE does not schedule PAGE, duplicate ACK still relays once, a new nonce is a new flood. Mesh range is `firmware/tests/mesh_test.c`.
+`firmware/tests/relay_test.c` encodes these rules: ttl decrement once, ttl=1 dropped, second hear before TX re-rolls still one TX, PAGE_ACK cancels pending PAGE, ACK-first then PAGE does not schedule PAGE, duplicate ACK still relays once, a new nonce is a new flood. Mesh range is `firmware/tests/mesh_test.c`.
 
 LOC_REQ relays like PAGE. LOC relays like PAGE_ACK. A heard LOC cancels a pending LOC_REQ for that requester and nonce. A duplicate LOC re-rolls and still forwards once. A LOC heard before the request does not schedule that request.
 

@@ -60,19 +60,19 @@ Index is `(y >> 3) * 128 + x`, bit `1 << (y & 7)`.
 
 **RAM HAL** (`hal/emu`): queues for encoder, back, and raw RX, an NVM blob, LCG `random_fill`, `on_tx_raw` for the desktop mesh. Used by `make test` and `make emu`.
 
-**Beeper stub** (`hal/beeper`): every `hal_t` function is a no-op or a static display buffer. `random_fill` is incremental. `now_ms` is 0. `gps_fix` returns the last RMC sentence fed to `beeper_gps_push_byte` (the seam for the Feather UART). Enough to `make nrf-check`.
+**Feather** (`hal/beeper`): `beeper_hal.c` is the `hal_t` table. `board.c` is linked only by `make beeper`. Host builds keep the weak hooks, so `now_ms` stays 0, `nvm_load` returns empty, and `radio_poll` returns nothing. On the Feather the glass, knob, Back, clock, RNG, GPS UART, compass, and radio receive are live. `radio_send_raw` does not transmit. Beep drives no pin. Vibe only records a deadline. Battery stays 0. `beeper_gps_push_byte` still feeds `nmea_push_byte`.
 
 ### GPS fix
 
 `gps_power(true)` turns the receiver on. `gps_fix` then writes a `gps_fix_t`: `valid`, and signed arcminutes times 10,000 (`lat_min_e4` north, `lon_min_e4` east). That is the PA1616S RMC field (`ddmm.mmmm` / `dddmm.mmmm`), not decimal degrees. Firmware never sees the NMEA string. `gps_power(false)` makes `gps_fix` return no fix. The RAM HAL starts powered. Firmware turns it off after a sample.
 
-The RAM HAL stores one fix (`emu_hal_set_gps`). The emulator turns an east/north foot grid into that fix. The nRF stub parses `$GPRMC` / `$GNRMC` in `firmware/src/nmea.c` when bytes arrive. Status `A` is a fix. Status `V` is no fix.
+The RAM HAL stores one fix (`emu_hal_set_gps`). The emulator turns an east/north foot grid into that fix. The Feather UART pushes bytes into `firmware/src/nmea.c`. Status `A` is a fix. Status `V` is no fix. A legal time on a status-A RMC sets the wall clock kept beside the fix.
 
 ### Heading
 
 `heading` writes a `heading_sample_t`: `tilt_deg` off flat, `still` when the accelerometer reads about 1 g, `motor` while a vibe is in progress, and `heading_deg` clockwise from north (`0` = the top of the device points north). It returns false when there is no sample. Firmware (`heading_view`) hides the arrow above 20° of tilt, while moving, and while the motor is running, then waits 400 ms before drawing an 8-way arrow.
 
-The RAM HAL starts flat, still, and facing north (`emu_hal_set_heading`). A vibe stays `motor` until `now_ms` passes the duration. The nRF stub returns false until the LSM303AGR driver exists.
+The RAM HAL starts flat, still, and facing north (`emu_hal_set_heading`). A vibe stays `motor` until `now_ms` passes the duration. The Feather reads the LSM303AGR and returns false when the chip does not answer.
 
 ---
 

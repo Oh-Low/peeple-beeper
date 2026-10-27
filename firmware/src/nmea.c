@@ -2,6 +2,25 @@
 
 #include <string.h>
 
+bool nmea_push_byte(nmea_line_t *line, uint8_t byte, gps_fix_t *out, uint8_t *hh, uint8_t *mm) {
+  if (!line) return false;
+  if (byte == '\r') return false;
+  if (byte == '\n') {
+    line->bytes[line->len] = 0;
+    bool skip = line->skip;
+    line->len = 0;
+    line->skip = false;
+    if (skip) return false;
+    return nmea_parse_rmc(line->bytes, out, hh, mm);
+  }
+  if (line->skip || line->len >= NMEA_LINE_MAX - 1) {
+    line->skip = true;
+    return false;
+  }
+  line->bytes[line->len++] = (char)byte;
+  return false;
+}
+
 static int hex_nibble(char c) {
   if (c >= '0' && c <= '9') return c - '0';
   if (c >= 'A' && c <= 'F') return c - 'A' + 10;
@@ -12,6 +31,7 @@ static int hex_nibble(char c) {
 static bool checksum_ok(const char *line) {
   const char *star = strchr(line, '*');
   if (!star) return true;
+  if (star[1] == 0 || star[2] == 0) return false;
   int hi = hex_nibble(star[1]);
   int lo = hex_nibble(star[2]);
   if (hi < 0 || lo < 0) return false;
@@ -85,16 +105,28 @@ static const char *field_at(const char *line, int index, char *buf, size_t cap) 
   return NULL;
 }
 
-bool nmea_parse_rmc(const char *line, gps_fix_t *out) {
+static void note_clock(const char *time, uint8_t *hh, uint8_t *mm) {
+  if (!hh || !mm) return;
+  if (!time || time[0] < '0' || time[1] < '0' || time[2] < '0' || time[3] < '0') return;
+  int hour = (time[0] - '0') * 10 + (time[1] - '0');
+  int minute = (time[2] - '0') * 10 + (time[3] - '0');
+  if (hour > 23 || minute > 59) return;
+  *hh = (uint8_t)hour;
+  *mm = (uint8_t)minute;
+}
+
+bool nmea_parse_rmc(const char *line, gps_fix_t *out, uint8_t *hh, uint8_t *mm) {
   if (!line || !out) return false;
   if (!is_rmc(line) || !checksum_ok(line)) return false;
   char status[8];
+  char tim[16];
   char lat[24];
   char ns[4];
   char lon[24];
   char ew[4];
   if (!field_at(line, 2, status, sizeof status)) return false;
   memset(out, 0, sizeof *out);
+  if (status[0] == 'A' && field_at(line, 1, tim, sizeof tim)) note_clock(tim, hh, mm);
   if (status[0] != 'A') return true;
   if (!field_at(line, 3, lat, sizeof lat) || !field_at(line, 4, ns, sizeof ns) ||
       !field_at(line, 5, lon, sizeof lon) || !field_at(line, 6, ew, sizeof ew)) {

@@ -1,24 +1,8 @@
 #!/usr/bin/env python3
-"""Turn the Beeple PNGs into 64×64 firmware art.
+"""Turn the Beeple PNGs into firmware art.
 
-Reads docs/BEEPLE PNG (or the paths you pass). Each picture is fitted to
-64×64 before it is packed:
-
-  * Taller or wider than 64: keep the top-left 64×64.
-  * Shorter or narrower: sit the picture on the top-left and fill the
-    rest with the corner color.
-  * A file listed in CROP uses that window instead. Vibey Eye drops its
-    top 3 rows so the feet stay in the square.
-
-A picture whose border is black is inverted, so the character is ink and
-the background is paper. The packed bytes match firmware/include/art.h.
-
-  python3 tools/beeple_to_art.py
-  python3 tools/beeple_to_art.py --write
-
---write replaces the matching symbols in art.h and art.c, rewrites the
-Beeple table in screen.c, and sets BEEPLE_N. Known files keep KNOWN order so a
-saved index still means the same mascot. New files are appended in filename order.
+--write replaces the matching symbols in art.h and art.c, replaces
+firmware/art/beeple.c, and sets BEEPLE_N.
 """
 
 import argparse
@@ -29,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = ROOT / "docs" / "BEEPLE PNG"
-SCREEN_C = ROOT / "firmware" / "src" / "screen.c"
+BEEPLE_C = ROOT / "firmware" / "art" / "beeple.c"
 BEEPLE_H = ROOT / "firmware" / "include" / "beeple.h"
 SIZE = 64
 
@@ -149,24 +133,30 @@ def convert(packer, path):
 
 
 def table_text(rows):
-    lines = ["static const beeple_def_t BEEPLES[] = {"]
+    lines = [
+        '#include "art.h"',
+        '#include "beeple.h"',
+        "",
+        "static const beeple_def_t BEEPLES[] = {",
+    ]
     for _path, symbol, label in rows:
         tag = symbol.upper()
-        lines.append(
-            f'    {{"{label}", {symbol}, {tag}_W, {tag}_H, false}},'
-        )
+        lines.append(f'    {{"{label}", {symbol}, {tag}_W, {tag}_H}},')
     lines.append("};")
+    lines.append(
+        '_Static_assert(sizeof BEEPLES / sizeof BEEPLES[0] == BEEPLE_N, "beeple table");'
+    )
+    lines.append("")
+    lines.append("const beeple_def_t *beeple_at(int id) {")
+    lines.append("  if (id < 0 || id >= BEEPLE_N) return 0;")
+    lines.append("  return &BEEPLES[id];")
+    lines.append("}")
+    lines.append("")
     return "\n".join(lines)
 
 
 def write_catalog(rows):
-    pager = SCREEN_C.read_text()
-    block = table_text(rows)
-    pat = r"static const beeple_def_t BEEPLES\[\] = \{.*?\n\};"
-    if not re.search(pat, pager, re.S):
-        raise SystemExit("screen.c is missing the BEEPLES table")
-    pager = re.sub(pat, block, pager, count=1, flags=re.S)
-    SCREEN_C.write_text(pager)
+    BEEPLE_C.write_text(table_text(rows))
 
     header = BEEPLE_H.read_text()
     if not re.search(r"#define BEEPLE_N \d+", header):
@@ -179,7 +169,7 @@ def write_catalog(rows):
 def main(argv):
     parser = argparse.ArgumentParser(description="Convert Beeple PNGs into 64×64 firmware art.")
     parser.add_argument("pngs", nargs="*", type=Path, help="PNG files (default: docs/BEEPLE PNG)")
-    parser.add_argument("--write", action="store_true", help="update art.h, art.c, screen.c, and beeple.h")
+    parser.add_argument("--write", action="store_true", help="update art.h, art.c, beeple.c, and beeple.h")
     args = parser.parse_args(argv)
     packer = load_packer()
     if args.pngs:

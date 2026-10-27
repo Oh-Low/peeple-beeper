@@ -202,7 +202,7 @@ Stay inside `firmware/src`. Call `hal->foo(hal->ctx, ...)` only — **no SDL, no
 
 Checklist when you add/rename a menu row:
 
-1. Menu labels (`MENU_N`, `MENU_PEEPLE`, `MENU_SETTINGS`, `MENU_BEEPLE`). Locate and Add live on the Peeple menu (`PEEP_LOCATE`, `PEEP_CONTACT`). The right-hand picture is `screen_set_menu_art`, not a menu row.
+1. Menu labels (`MENU_N`, `MENU_PEEPLE`, `MENU_SETTINGS`, `MENU_BEEPLE`). Locate and Add live on the Peeple menu (`PEEP_LOCATE`, `PEEP_CONTACT`). The right-hand picture is the selected mascot (`screen_set_beeple`), not a menu row.
 2. `on_turn` clamp (`MENU_N` on the menu, `SET_N` on settings). A new settings row needs a `SET_` index, a label, a value, an `on_press` case, and `SET_N` grows the scroll window.
 3. `on_press` indices and `on_back` restore (`sel` of the item you came from).
 4. `draw_menu` label array (Inbox count, Outbox `*`). Clock and battery follow `show_clock_bat`.
@@ -212,10 +212,16 @@ Do not encode selection as ASCII `>`. Keep invert-rect lists.
 
 **Tests to run or extend**
 
-- `firmware/tests/page_test.c` — `make test` — send/ACK, retries, fail, relay. Outbox UI status follows this radio.
+- `firmware/tests/page_test.c` — `make test` — send/ACK, retries, fail. Outbox UI status follows this radio.
+- `firmware/tests/relay_test.c` — jitter, hop drop, already-sent.
 - `firmware/tests/store_test.c` — blob shape, canned persistence, in-flight → failed.
-- `firmware/tests/locate_test.c` — foot-grid quantization, RMC parse, locate reply, hop, no sky.
-- `firmware/tests/mesh_test.c` — 100 ft mesh and the emulator directory (`emu/seed.c`).
+- `firmware/tests/gps_test.c` — foot-grid quantization and RMC parse.
+- `firmware/tests/heading_test.c` — eight-way arrow.
+- `firmware/tests/receiver_test.c` — receiver sleep.
+- `firmware/tests/locate_test.c` — locate reply, hop, no sky, tracking consent.
+- `firmware/tests/mesh_test.c` — RSSI and who hears whom inside 100 ft.
+- `firmware/tests/seed_test.c` — emulator directory (`emu/seed.c`).
+- `firmware/tests/pair_test.c` — restarting a pair.
 
 ---
 

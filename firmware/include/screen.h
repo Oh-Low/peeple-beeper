@@ -102,7 +102,6 @@ typedef struct {
   const uint8_t *menu_art;
   int menu_art_w;
   int menu_art_h;
-  bool menu_art_invert;
   char sent_to[PAGE_FROM_MAX + 1];
   char sent_body[PAGE_BODY_MAX + 1];
   char loc_name[PAGE_FROM_MAX + 1];
@@ -110,13 +109,12 @@ typedef struct {
   bool loc_holding;
   uint32_t loc_hold_since;
   bool loc_need_refresh;
+  bool loc_capture_wait;
   char track_name[PAGE_FROM_MAX + 1];
 } screen_t;
 
 void screen_init(screen_t *screen, identity_store_t *identity, contact_book_t *contacts,
                 pair_session_t *pair, message_session_t *radio, locate_radio_t *locate);
-/* NULL clears the slot. */
-void screen_set_menu_art(screen_t *screen, const uint8_t *bits, int w, int h, bool invert);
 /* Out of range selects Voidfarer. */
 void screen_set_beeple(screen_t *screen, int id);
 void screen_poll_locate(screen_t *screen);

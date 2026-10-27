@@ -23,11 +23,7 @@ static int index_of(const contact_book_t *book, const uint8_t *node_id) {
 static void clamp_name(char *dst, const char *name, const uint8_t *node_id) {
   str_copy_max(dst, PAGE_FROM_MAX + 1, name ? name : "", PAGE_FROM_MAX);
   if (dst[0]) return;
-  char hex[NODE_ID_LEN * 2 + 1];
-  node_id_to_hex(node_id, NODE_ID_LEN, hex, sizeof hex);
-  size_t n = str_ascii_len(hex);
-  const char *tail = n >= 4 ? hex + n - 4 : hex;
-  str_copy_max(dst, PAGE_FROM_MAX + 1, tail, 4);
+  identity_blank_name(node_id, dst, PAGE_FROM_MAX + 1);
 }
 
 const contact_t *contacts_find_by_id(const contact_book_t *book, const uint8_t *node_id) {

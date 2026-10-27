@@ -363,12 +363,14 @@ void store_remember_hash(beeper_t *b, const uint8_t *bytes, size_t len) {
   b->nvm_hash = store_hash_blob(bytes, len);
 }
 
+/* Load, save, and sync must not nest. One NVM_BYTES scratch. */
+static uint8_t store_buf[NVM_BYTES];
+
 bool store_load(beeper_t *b, const hal_t *hal) {
-  static uint8_t buf[NVM_BYTES];
-  size_t n = hal->nvm_load(hal->ctx, buf, NVM_BYTES);
+  size_t n = hal->nvm_load(hal->ctx, store_buf, NVM_BYTES);
   if (n <= 0) return false;
-  if (!store_apply(b, buf, n)) return false;
-  store_remember_hash(b, buf, n);
+  if (!store_apply(b, store_buf, n)) return false;
+  store_remember_hash(b, store_buf, n);
   return true;
 }
 
@@ -376,19 +378,17 @@ bool store_save(beeper_t *b, const hal_t *hal) {
   if (!b->identity.has_id) {
     return hal->nvm_save(hal->ctx, (const uint8_t *)"", 0);
   }
-  static uint8_t bytes[NVM_BYTES];
-  size_t n = store_encode(b, bytes, sizeof bytes);
+  size_t n = store_encode(b, store_buf, sizeof store_buf);
   if (!n) return false;
-  return hal->nvm_save(hal->ctx, bytes, n);
+  return hal->nvm_save(hal->ctx, store_buf, n);
 }
 
 void store_sync(beeper_t *b, const hal_t *hal) {
   if (!b->identity.has_id) return;
-  static uint8_t bytes[NVM_BYTES];
-  size_t n = store_encode(b, bytes, sizeof bytes);
+  size_t n = store_encode(b, store_buf, sizeof store_buf);
   if (!n) return;
-  uint32_t h = store_hash_blob(bytes, n);
+  uint32_t h = store_hash_blob(store_buf, n);
   if (h == b->nvm_hash) return;
-  if (!hal->nvm_save(hal->ctx, bytes, n)) return;
+  if (!hal->nvm_save(hal->ctx, store_buf, n)) return;
   b->nvm_hash = h;
 }

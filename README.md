@@ -32,10 +32,16 @@ Onboarding docs:
 ## Build and test
 
 ```
-make test    # page_test, store_test, mesh_test, locate_test
-make emu     # build/peeple-emu (SDL2)
+make test          # page_test, store_test, mesh_test, locate_test
+make emu           # build/peeple-emu (SDL2)
 make nrf-check
+make bringup       # breadboard wire test, writes build/bringup.uf2
+make flash-bringup # copy that image onto FTHR840BOOT
+make beeper        # pager image for the Feather, writes build/beeper.uf2
+make flash-beeper  # copy that image onto FTHR840BOOT
 ```
+
+`make bringup` and `make beeper` need `arm-none-eabi-gcc` (the Arm GNU Toolchain). Double-tap the Feather reset button so the `FTHR840BOOT` drive appears, then `make flash-bringup` or `make flash-beeper`. The wire-test glass shows the switches, the compass ids, one radio register, and a count of GPS sentences. The pager image shows the menu. Both leave the piezo and the motor alone, and neither transmits.
 
 `make test` uses clang (`-std=c11 -Wall -Wextra -Werror`). All three tests must print `ok` lines and exit 0.
 

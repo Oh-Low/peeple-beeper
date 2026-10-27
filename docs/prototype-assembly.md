@@ -4,7 +4,7 @@ This is the wiring checklist for a single bench unit. It assumes you have never 
 
 You are building one pager on a breadboard: a Feather nRF52840, a 915 MHz SX1262 radio, a 128×64 FSTN screen, a knob, a back button, a vibration motor, a piezo, a GPS, an LSM303AGR compass, and a LiPo. The three demo units are three copies of this same checklist.
 
-The Feather already contains a small program from Adafruit called a bootloader. That program only lets the Mac see the board. The pager firmware in this repository does not yet know these pins. When the checklist is done, the screen stays blank, the radio stays quiet, and the GPS has not been asked for a position. What you have proved is that power is right, nothing is shorted, and every wire lands on the pin the firmware port will use.
+The Feather already contains a small program from Adafruit called a bootloader. That program only lets the Mac see the board. The pager firmware in this repository does not yet know these pins. When the checklist is done, the screen stays blank, the radio stays quiet, and the GPS has not been asked for a position. What you have proved is that power is right, nothing is shorted, and every wire lands on the pin the firmware port will use. The wire test at the end of this page is the first program that talks to those parts.
 
 Do the steps in order. Do not skip ahead to the battery.
 
@@ -29,7 +29,7 @@ A **breadboard** hides those connections. The holes in one short row, on one sid
 | Piezo disc (PS1240) and a 100 Ω resistor | The buzzer you hear. |
 | Ultimate GPS breakout and a CR1220 coin cell | Position, and a clock that stays warm when the pager sleeps. Firmware can turn it off. |
 | Adafruit LSM303AGR breakout | Which way is down, and which way is north when the board is held flat. The chip does not correct a tipped heading. |
-| Adafruit 1200 mAh LiPo | The battery. Its plug matches the Feather. The battery that came with the radio does not. |
+| Adafruit 1200 mAh LiPo | The battery. Its plug is a JST PH 2.0 and matches the Feather's white socket. |
 
 Two voltages show up on the Feather. The pin named **EN** is not a voltage. Grounding **EN** turns the 3.3 volt regulator off. Leave **EN** empty.
 
@@ -46,8 +46,8 @@ Two voltages show up on the Feather. The pin named **EN** is not a voltage. Grou
 
 - [ ] Unplug USB.
 - [ ] Unplug the LiPo. Leave it in the charging bag until the last section.
-- [ ] Leave the radio's own small battery in its bag. Its plug is a different shape. Do not try it in the Feather's socket.
-- [ ] Screw the 915 MHz antenna onto the radio before the radio ever receives power. A transmitter with no antenna reflects energy back into the chip. We will not transmit today. The antenna still goes on now so that step cannot be forgotten later.
+- [ ] Leave the radio's own 600 mAh battery in its bag. Its plug is a smaller PH1.25. It will not seat in the Feather's socket, and it does not get plugged into the radio for this build. Do not force either plug.
+- [ ] Fit the antenna before the radio ever receives power. A transmitter with no antenna reflects energy back into the chip. We will not transmit today. The antenna still goes on now so that step cannot be forgotten later. The socket on the radio is a small snap, not a screw. Press the snap end of the short black cable straight down onto it until it clicks. Do not twist. Twisting tears the socket off the board. Then screw the whip onto the threaded end of that cable.
 - [ ] Wash your hands after soldering. The solder in the Adafruit spool is 60/40 tin-lead.
 - [ ] Safety glasses on while the iron is hot and while you clip leads.
 
@@ -57,7 +57,7 @@ If a step says "stop," unplug USB before you move a wire.
 
 This is the contract. Later firmware should use these Feather pins. Pins not in the table stay empty.
 
-The radio's signal names (`GP10`, `3V3`, and so on) are printed on the radio board. They are Pico names. You are not plugging in a Pico.
+The radio's signal names (`GP10`, `3V3`, and so on) are Pico names. They are not printed next to the sockets. Section 4 is the map. You are not plugging in a Pico.
 
 | Function | Feather pin | Other end |
 |---|---|---|
@@ -71,10 +71,10 @@ The radio's signal names (`GP10`, `3V3`, and so on) are printed on the radio boa
 | Screen command/data | **A0** | Screen pin 10 `A0` |
 | Screen reset | **A1** | Screen pin 11 `/RST` |
 | Screen chip select | **A2** | Screen pin 12 `/CS` |
-| Knob A | **D6** | Encoder pin beside the middle, with a 10 kΩ pull-up |
-| Knob B | **D9** | The other pin beside the middle, with a 10 kΩ pull-up |
-| Knob press | **A3** | Encoder switch, with a 10 kΩ pull-up |
-| Back button | **A4** | Button, with a 10 kΩ pull-up |
+| Knob A | **D6** | Encoder pin beside the middle. Active low. The nRF pull-up holds it. |
+| Knob B | **D9** | The other pin beside the middle. Active low. The nRF pull-up holds it. |
+| Knob press | **A3** | Encoder switch. Active low. The nRF pull-up holds it. |
+| Back button | **A4** | Button. Active low. The nRF pull-up holds it. |
 | Vibration | **A5** | 1 kΩ resistor, then the transistor base |
 | Beep | **D2** | 100 Ω resistor, then the piezo |
 | GPS receive | **RX** | GPS **TX** |
@@ -89,7 +89,7 @@ Leave the Feather pins **USB**, **BAT**, **EN**, and **AREF** empty. **AREF** is
 
 Several names you may see in pin diagrams are not holes on the breadboard header. **D3** is the onboard red LED. **D4** is the onboard blue LED. **D7** is the small button already on the Feather. **D8** is the onboard color LED. **A6** is tied to the battery divider inside the board. Do not hunt for those holes.
 
-Do not wire radio `GP22`. On a stock board the antenna switch is steered by the SX1262's own DIO2 pin. `GP22` connects to that switch only if solder jumper H3 is moved from position A to position B. Leave the jumper where the factory put it, and leave `GP22` empty.
+Do not wire radio `GP22`. Find the three pads marked **A** and **B** on the radio. A solder blob should already join the middle pad to **A**. That factory blob lets the SX1262's own DIO2 pin steer the antenna switch. **B** would hand that switch to `GP22`. Leave the blob on **A**, and leave `GP22` empty. Do not move any other solder blob on the radio.
 
 ## 1. Solder the headers
 
@@ -104,6 +104,7 @@ A male header is the loose strip of pins. The long ends go down into the breadbo
 - [ ] Solder the compass the same way. The printed names VIN, GND, SDA, and SCL face up. Count that row and use a strip of that length only.
 - [ ] On the encoder, clip only the two wide flat ears on the sides of the metal can. Leave every thin pin. Those ears are what Adafruit means by the side tabs.
 - [ ] Meter on continuity (it beeps when the probes touch each other, or touch two holes that are already connected). Touch one probe to the Feather pin labeled **3V** and the other to the Feather pin labeled **GND**. Silence is correct. A beep means solder is joining those two pins. Clear that bridge before USB.
+- [ ] Unplug the Feather, the GPS, and the compass once the joints are cool. The breadboard was only holding the pins straight. Their final seats are in the later sections.
 
 ## 2. Power the Feather alone
 
@@ -115,26 +116,64 @@ Unplug USB before the next section.
 
 ## 3. Give the breadboard a 3.3 volt rail
 
-- [ ] Seat the Feather so it straddles the center trench, one header on each side. Each pin owns the short group of holes beside it, on that same side of the trench. The holes across the trench are a different connection. When a later step names a Feather pin, use an empty hole in that pin's group. Leave the hole the pin itself already fills.
+- [ ] Seat the Feather across the trench. Its two headers are 0.8 inches apart. On a board whose columns are lettered A through J, that is **B and H**, or **C and I**. One header is then on each side of the trench. The two columns that touch the trench are only 0.3 inches apart. The Feather does not fit there, and forcing it bends the pins.
+- [ ] The Feather covers the holes between its headers. The open holes in a pin's row are the ones outside the board, toward the power rail. One side has one open hole per row. The other side has two. Turn the Feather so the header that carries **SCK** is the side with two open holes. **SCK** and **MO** each get a radio wire and a screen wire later. Every other signal pin needs one wire, in its open hole. Leave the hole the Feather pin itself already fills.
 - [ ] Run one wire from Feather **3V** to a hole in the red stripe beside the Feather. Run one wire from Feather **GND** to the blue stripe next to that red stripe. Add another ground wire if you want. Never run a wire from the red stripe to the blue stripe.
 - [ ] If the red line is broken at the middle of the board, the two halves are separate. Put the Feather's 3V wire and every later red-rail wire in the same half, or bridge the break with one wire. Do the same for the blue stripe.
 - [ ] Plug USB in. Black probe in that blue stripe, red probe in that red stripe. About 3.3 volts. Unplug USB.
 
 Every later "red rail" and "blue rail" means these two stripes.
 
+## Where the parts sit
+
+The Feather stays where section 3 put it. The radio lies at one end of the breadboard, with the antenna cable off that end. The vibration motor stays near the Feather, on the radio's end. The GPS and the compass go at the other end. The motor is a permanent magnet, and a later transmit is loud at 915 MHz. Distance is what keeps the compass and the GPS useful.
+
 ## 4. Radio
 
-Read the white name printed beside each socket. That name belongs only to the hole it sits against. `GP10` is the socket whose own printing says GP10.
+The sockets point up. The radio does not plug into the breadboard. Push a jumper into the socket, and the other end into the breadboard hole the step names.
 
-The socket printed **3V3** is an input on this build. With a Pico plugged in, the Pico would make 3.3 volts and feed this pin. There is no Pico, so the Feather's red rail feeds it. That is what powers the SX1262. The socket printed **3V3_EN** is the neighbor and gets no wire.
+The sockets have no GP names. Hold the board with the sockets facing you and the **PWR** and **CHG** LEDs at the top. A small USB mark is printed on that same end. The metal can and the antenna snap are at the bottom. Count from the LED end. The left row starts at **GP0**. The right row starts at **VBUS**. The **3V3** and **GP22** text beside the **A**/**B** pads is the antenna jumper, not a socket.
 
-**VBUS** and **VSYS** get no wire. They belong to the onboard charger. Do not plug the radio's own LiPo into the radio either.
+```
+              PWR    CHG
+              USB mark
 
-The antenna switch is already handled on the board. The SX1262's DIO2 pin steers it. You do not add a wire for that.
+ left row                        right row
+ GP0                             VBUS
+ GP1                             VSYS
+ GND                             GND
+ GP2    busy      D11            3V3_EN
+ GP3    select    D10            3V3       red rail
+ GP4                             ADC_VREF
+ GP5                             GP28
+ GND                             GND
+ GP6                             GP27
+ GP7                             GP26
+ GP8                             RUN
+ GP9                             GP22
+ GND                             GND
+ GP10   clock     SCK            GP21
+ GP11   data out  MO             GP20      D13
+ GP12   data in   MI             GP19
+ GP13                            GP18
+ GND                             GND
+ GP14                            GP17
+ GP15   reset     D12            GP16
 
-- [ ] Antenna is attached.
+              metal can
+```
+
+A name with nothing after it gets no wire. Any **GND** socket is ground. One is enough. **3V3** is the socket across from **GP3**. **3V3_EN** is the socket across from **GP2**. Those two are neighbors. Only **3V3** gets the red rail.
+
+**3V3** is an input on this build. With a Pico plugged in, the Pico would make 3.3 volts and feed this pin. There is no Pico, and this board has no regulator of its own on that pin, so the Feather's red rail feeds it. That rail powers the SX1262 and the PWR LED.
+
+**VBUS** and **VSYS** get no wire. They belong to the onboard charger. The slide switch beside the small battery socket only connects the radio's own battery, which stays in the bag. The switch does not turn on the SX1262. A dark PWR LED means the red rail landed in **3V3_EN** or **VBUS** instead of **3V3**.
+
+The antenna switch is already handled on the board, with the solder blob on **A**. The SX1262's DIO2 pin steers it. You do not add a wire for that.
+
+- [ ] Antenna cable is clicked on, and the whip is screwed to the cable. The **A**/**B** blob is still on **A**.
 - [ ] Radio **3V3** to the red rail.
-- [ ] A radio **GND** to the blue rail. Any socket printed GND is the same connection.
+- [ ] A radio **GND** to the blue rail. Any **GND** socket in the map is the same connection.
 - [ ] `GP10` to an empty hole in the Feather **SCK** group.
 - [ ] `GP11` to an empty hole in the Feather **MO** group.
 - [ ] `GP12` to an empty hole in the Feather **MI** group.
@@ -144,7 +183,7 @@ The antenna switch is already handled on the board. The SX1262's DIO2 pin steers
 - [ ] `GP20` to Feather **D13**. The radio pulses this when a packet arrives.
 - [ ] `GP22`, `GP26`, **VBUS**, **VSYS**, and **3V3_EN** have no wires.
 
-Plug USB in. Black probe on a radio socket printed GND, red probe on the socket printed **3V3**. About 3.3 volts. The PWR LED on the radio should light, because that LED sits on this 3.3 volt pin. The CHG LED stays dark. That one belongs to the charger we are not using. Unplug USB.
+Plug USB in. Black probe in a **GND** socket, red probe in the **3V3** socket (across from **GP3**). About 3.3 volts. The PWR LED on the radio should light, because that LED sits on this 3.3 volt pin. The CHG LED stays dark. That one belongs to the charger we are not using. Unplug USB.
 
 ## 5. Screen
 
@@ -169,9 +208,10 @@ Pins 1–4 belong to an optional font chip this build does not use. A wire on th
 
 The screen and the radio share **SCK** and **MO**. That is normal. Only one of them is listened to at a time, chosen by its own chip-select pin (**D10** for the radio, **A2** for the screen). The screen has nothing to say back, so it does not connect to **MI**. Leave the radio's wires where they are. You are adding the screen onto the same rows.
 
-Pin 5 powers the backlight. The module is rated to take 3.3 volts there and draw about 50 to 60 milliamps. A Feather signal pin cannot supply that, so pin 5 goes to the red rail.
+Pin 5, **LEDA**, powers the backlight. The module is rated to take 3.3 volts there and draw about 50 to 60 milliamps. A Feather signal pin cannot supply that, so pin 5 goes to the red rail. Pin 7, **VDD**, is a different pin: it powers the display controller. That supply is also 3.3 volts, and its absolute maximum is 3.6 volts. The two pins are not tied together on the module, so each one gets its own wire to the red rail. Pin 6, **VSS**, is the ground for both.
 
-- [ ] Wire the table. Pins 1, 2, 3, and 4 get no wire.
+- [ ] Seat the screen header in the breadboard. Each pin owns that row. Jumper from a free hole in the row, not from the hole the pin already fills.
+- [ ] Wire the table. Pins 1, 2, 3, and 4 get no wire. If a second chip is soldered on the module, pin 4 goes to the red rail instead, so that chip stays off the shared data wires.
 - [ ] USB in. Black probe on pin 6, red probe on pin 7. About 3.3 volts. The glass should be lit, even if the picture is blank or speckled. A dark glass means pin 5 or pin 6 is in the wrong hole.
 - [ ] If the module is too hot to touch, or the red rail falls under 3.0 volts, unplug. Pin 7 has likely landed on the Feather pin labeled **USB**.
 
@@ -181,15 +221,16 @@ Unplug USB.
 
 The encoder has five thin pins. Three sit in one row. Two sit as a separate pair. The center pin of the three goes to ground. The two beside it are the rotation signals. Either one may be A. If menus move backward once firmware exists, swap the D6 and D9 wires. That swap is safe.
 
-A **pull-up** is a resistor from the signal to the red rail. The switch shorts that signal to ground when it closes. When it is open, the resistor holds the pin at 3.3 volts so the Feather does not read a random in-between voltage. The 10 kΩ resistors have color bands brown, black, orange, gold. Set the 1 kΩ and 100 Ω parts aside until later sections.
+Each switch connects its Feather pin to ground only while it is closed. The nRF52840 has a pull-up inside the chip, about 13 kΩ, and firmware will turn those four on. This checklist leaves them off, so a voltmeter on an open switch wanders. That is the right result. No resistor goes on **D6**, **D9**, **A3**, or **A4**.
+
+The signal row is a free hole beside that Feather pin.
 
 - [ ] Center pin of the encoder's three-pin row to the blue rail.
-- [ ] Either pin beside that center to an empty hole in the Feather **D6** group. The other to an empty hole in the Feather **D9** group.
-- [ ] For each of **D6**, **D9**, **A3**, and **A4**: one end of a 10 kΩ resistor in that signal's hole group, the other end in the red rail. Both ends in the blue rail, or one end in red and one end in blue with nothing on the signal, is the wrong placement.
-- [ ] One pin of the encoder's remaining pair to the blue rail. The other to an empty hole in the Feather **A3** group.
-- [ ] The back button has four legs. The two legs on the same side are connected even when you are not pressing. Pick one leg from each side. Meter on continuity, USB unplugged: those two legs stay silent until you press, and beep while you press. Then one chosen leg goes to the blue rail and the other to an empty hole in the Feather **A4** group.
+- [ ] Either pin beside that center into the **D6** signal row. The other into the **D9** signal row.
+- [ ] One pin of the encoder's remaining pair to the blue rail. The other into the **A3** signal row.
+- [ ] The back button has four legs. The two legs on the same side are connected even when you are not pressing. Pick one leg from each side. Meter on continuity, USB unplugged: those two legs stay silent until you press, and beep while you press. Then one chosen leg goes to the blue rail and the other into the **A4** signal row.
 
-Plug USB in. Black probe on the blue rail, red probe on the **A4** group. About 3.3 volts, falling to about 0 while the button is held. If it stays at 0, the two legs you picked are the pair that is always connected, or the resistor went to the blue rail. Check **A3** the same way by pressing the knob. Unplug USB.
+Leave USB unplugged. Meter on continuity. One probe on the blue rail, the other on the **A4** signal row. Silence until you press the back button, and a beep while you hold it. A beep with the button open means the two legs you picked are the pair that is always connected. Check **A3** the same way by pressing the knob. **D6** and **D9** beep only while you turn the knob through a click, which is easy to miss. The ground wire on the center pin is the connection that matters there.
 
 ## 7. Vibration motor
 
@@ -238,6 +279,7 @@ The names TX and RX belong to the chip printed next to them. The GPS sends on it
 | RX | Feather **TX** |
 | EN | Feather **D5** |
 | PPS | no wire |
+| FIX | no wire, if that name is printed |
 | 3.3V | no wire |
 | VBAT | no wire. The coin cell is the backup. |
 
@@ -257,9 +299,11 @@ This part reports which way is down, and which way is north while the board is h
 
 Seat it at the opposite end of the breadboard from the vibration motor before any of its wires go in. The motor is a permanent magnet. Powering the motor off does not remove that magnet. Distance does. The radio antenna is the other end to stay away from.
 
-**VIN** takes power. The compass pin labeled **3V**, the one beside **VIN**, is an output from the breakout's regulator. It is not the Feather's **3V** pin. Leave it empty.
+**VIN** takes power. The compass pin labeled **3Vo**, the one beside **VIN**, is an output from the breakout's regulator. It is not the Feather's **3V** pin. Leave it empty.
 
-**CSA** and **CSM** choose how the chip talks. Leave them empty. The chip holds them high, which keeps both sensors on **SDA** and **SCL**. A wire from either pin to the blue rail takes that sensor off the bus.
+**SDA** and **SCL** already have pull-up resistors on this breakout. The Feather does not. Leave those two wires as plain wires.
+
+**CSA** and **CSM** choose how the chip talks. Leave them empty. Resistors on the breakout hold them high, which keeps both sensors on **SDA** and **SCL**. A wire from either pin to the blue rail takes that sensor off the bus.
 
 **IA1**, **IA2**, **INTM**, and any other unlisted pin get no wire. The compass does not connect to **D12**.
 
@@ -269,7 +313,7 @@ Seat it at the opposite end of the breadboard from the vibration motor before an
 | GND | blue rail |
 | SDA | Feather **SDA** |
 | SCL | Feather **SCL** |
-| 3V (beside VIN) | no wire |
+| 3Vo (beside VIN) | no wire |
 | IA1 | no wire |
 | IA2 | no wire |
 | INTM | no wire |
@@ -298,7 +342,9 @@ Unplug the LiPo. Plug in only USB. These boxes stay empty unless the bad conditi
 - [ ] Any module is too hot to touch after a few seconds.
 - [ ] The screen, radio, GPS, or compass has a wire on the Feather pin labeled **USB** or **BAT**.
 - [ ] The radio's **3V3_EN**, **VBUS**, or **VSYS** socket has a wire.
-- [ ] The GPS pin labeled **3.3V**, or the compass pin labeled **3V** beside **VIN**, has a wire.
+- [ ] The GPS pin labeled **3.3V**, or the compass pin labeled **3Vo** beside **VIN**, has a wire.
+- [ ] The radio's **A**/**B** solder blob is on **B**, or `GP22` has a wire.
+- [ ] The antenna snap is loose, or it was twisted onto the socket.
 - [ ] Compass **CSA** or **CSM** is tied to the blue rail.
 - [ ] Any compass pin other than **SDA** and **SCL** has a wire to a Feather signal pin. **D12** is the radio only.
 
@@ -307,17 +353,40 @@ Unplug the LiPo. Plug in only USB. These boxes stay empty unless the bad conditi
 - [ ] Feather alone shows `FTHR840BOOT` after a double-tap of reset.
 - [ ] About 3.3 volts on the red rail, on the radio's **3V3** socket, and on screen pin 7.
 - [ ] Radio PWR LED lit. Radio CHG LED dark.
-- [ ] Antenna fitted. `GP22` still empty.
+- [ ] Antenna snap clicked on, whip screwed to the cable. Solder blob still on **A**. `GP22` still empty.
 - [ ] Screen glass lit, picture still blank or speckled.
-- [ ] Back button reads about 3.3 volts and falls to 0 while pressed.
+- [ ] Back button and knob switch beep on the continuity meter only while held. No pull-up resistor on **D6**, **D9**, **A3**, or **A4**.
 - [ ] GPS LED blinking when the antenna can see sky.
 - [ ] Motor still, piezo silent.
 - [ ] Compass powered from the red rail, **SDA** and **SCL** on those Feather pins, **CSA** and **CSM** empty, **D12** connected only to radio `GP15`, **PPS** still empty.
 - [ ] Adafruit LiPo in the Feather's white socket. Radio battery still in the bag.
 
-The pager application is a separate piece of work. `hal/beeper/beeper_hal.c` is still a stub. Until that stub drives these exact pins, the screen will not show a menu and the radio will not send a page.
+The pager image is `make beeper`, then `make flash-beeper` once `FTHR840BOOT` is mounted. The glass shows the menu. A page send does not go on the air. Piezo and the motor stay undriven.
+
+## Wire test
+
+Piezo and motor stay for later. This test talks to the parts that are already wired and draws the result on the glass. It reads the radio. It does not transmit.
+
+The build needs `arm-none-eabi-gcc`. Double-tap reset until a drive named `FTHR840BOOT` appears, then:
+
+```
+make bringup
+make flash-bringup
+```
+
+The red LED on the Feather blinks three times, then keeps pulsing. A fast blink that never settles means the chip faulted. The glass has a border and these lines:
+
+- `BRINGUP` is the title.
+- `D6 D9 A3 A4` sit at `1` while the switch is open and `0` while you hold it or pass a knob click. This image turns the internal pull-ups on. The knob also changes the glass voltage. The title shows that setting as `EV` and `R`. Turn until the picture is readable straight on. One direction lightens it.
+- `ACC 33 OK` and `MAG 40 OK` are the compass answering on I2C.
+- `RF 1424 OK` is the radio answering on SPI after one reset pulse on `D12`.
+- `GPS` counts bytes and sentences that start with `$`. Sentences keep coming indoors. A fix still wants sky. `OK` appears after the first `$`.
+
+`--` means that part never answered. `NO` means it answered with a different id. A mirrored picture still means the screen is on the bus.
 
 ## Related
 
 - [hardware.md](hardware.md) explains why the pager uses this class of part.
 - [hal.md](hal.md) is the function list the firmware will call once the pins above are real.
+
+Pin names in this checklist were checked against the Waveshare Pico-LoRa-SX1262 schematic, the BuyDisplay ERM12864-9 pin table, and the Adafruit pinouts for the Feather nRF52840 Express, the Ultimate GPS, and the LSM303AGR breakout.

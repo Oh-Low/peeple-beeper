@@ -4,9 +4,6 @@
 
 #include <string.h>
 
-#define RELAY_JITTER_MIN_MS 80
-#define RELAY_JITTER_MAX_MS 400
-
 static uint32_t relay_jitter_ms(const hal_t *hal) {
   uint8_t r[2];
   hal->random_fill(hal->ctx, r, 2);

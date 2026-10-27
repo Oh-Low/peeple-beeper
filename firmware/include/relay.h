@@ -8,6 +8,8 @@
 #include <stdint.h>
 
 #define RELAY_SEEN_MAX 24
+#define RELAY_JITTER_MIN_MS 80
+#define RELAY_JITTER_MAX_MS 400
 
 typedef struct {
   int kind;

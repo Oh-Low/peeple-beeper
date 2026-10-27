@@ -1,5 +1,6 @@
 #include "beeper_hal.h"
 
+#include "board.h"
 #include "nmea.h"
 
 #include <string.h>
@@ -7,10 +8,11 @@
 static uint8_t display[DISPLAY_BUF_LEN];
 static uint8_t rng_ctr;
 static bool whisper;
-static char nmea_line[96];
-static int nmea_len;
 static gps_fix_t nrf_fix;
+static nmea_line_t nmea;
 static bool gps_on;
+static uint8_t clock_hh;
+static uint8_t clock_mm;
 
 static void display_clear(void *ctx) {
   (void)ctx;
@@ -33,21 +35,22 @@ static uint8_t *display_buffer(void *ctx) {
 
 static void display_flush(void *ctx) {
   (void)ctx;
+  board_flush(display);
 }
 
 static encoder_event_t encoder_poll(void *ctx) {
   (void)ctx;
-  return ENC_NONE;
+  return board_encoder_poll();
 }
 
 static bool back_poll(void *ctx) {
   (void)ctx;
-  return false;
+  return board_back_poll();
 }
 
 static void random_fill(void *ctx, uint8_t *buf, size_t len) {
   (void)ctx;
-  for (size_t i = 0; i < len; i++) buf[i] = rng_ctr++;
+  board_random_fill(buf, len);
 }
 
 static void radio_set_whisper(void *ctx, bool on) {
@@ -68,32 +71,28 @@ static void radio_send_raw(void *ctx, const uint8_t *bytes, size_t len) {
 
 static bool radio_poll_raw(void *ctx, raw_frame_t *out) {
   (void)ctx;
-  (void)out;
-  return false;
+  return board_radio_poll(out);
 }
 
 static size_t nvm_load(void *ctx, uint8_t *out, size_t max) {
   (void)ctx;
-  (void)out;
-  (void)max;
-  return 0;
+  return board_nvm_load(out, max);
 }
 
 static bool nvm_save(void *ctx, const uint8_t *bytes, size_t len) {
   (void)ctx;
-  (void)bytes;
-  return len <= NVM_BYTES;
+  return board_nvm_save(bytes, len);
 }
 
 static uint32_t now_ms(void *ctx) {
   (void)ctx;
-  return 0;
+  return board_now_ms();
 }
 
 static void clock_fn(void *ctx, uint8_t *hh, uint8_t *mm) {
   (void)ctx;
-  if (hh) *hh = 0;
-  if (mm) *mm = 0;
+  if (hh) *hh = clock_hh;
+  if (mm) *mm = clock_mm;
 }
 
 static uint8_t battery_pct(void *ctx) {
@@ -103,7 +102,7 @@ static uint8_t battery_pct(void *ctx) {
 
 static void vibe(void *ctx, uint16_t ms) {
   (void)ctx;
-  (void)ms;
+  board_vibe(ms);
 }
 
 static void beep(void *ctx, uint16_t ms) {
@@ -113,13 +112,14 @@ static void beep(void *ctx, uint16_t ms) {
 
 static bool heading_fn(void *ctx, heading_sample_t *out) {
   (void)ctx;
-  if (out) memset(out, 0, sizeof *out);
-  return false;
+  return board_heading(out);
 }
 
 static void gps_power_fn(void *ctx, bool on) {
   (void)ctx;
+  if (on && !gps_on) memset(&nrf_fix, 0, sizeof nrf_fix);
   gps_on = on;
+  board_gps_power(on);
 }
 
 static bool gps_fix_fn(void *ctx, gps_fix_t *out) {
@@ -134,29 +134,20 @@ static bool gps_fix_fn(void *ctx, gps_fix_t *out) {
 }
 
 void beeper_gps_push_byte(uint8_t byte) {
-  if (byte == '\r') return;
-  if (byte == '\n') {
-    nmea_line[nmea_len] = 0;
-    gps_fix_t fix;
-    if (nmea_parse_rmc(nmea_line, &fix)) nrf_fix = fix;
-    nmea_len = 0;
-    return;
-  }
-  if (nmea_len >= (int)sizeof nmea_line - 1) {
-    nmea_len = 0;
-    return;
-  }
-  nmea_line[nmea_len++] = (char)byte;
+  gps_fix_t fix;
+  if (nmea_push_byte(&nmea, byte, &fix, &clock_hh, &clock_mm)) nrf_fix = fix;
 }
 
 void beeper_hal_init(hal_t *out) {
   memset(display, 0, sizeof display);
   rng_ctr = 0;
   whisper = false;
-  nmea_len = 0;
-  nmea_line[0] = 0;
+  memset(&nmea, 0, sizeof nmea);
   memset(&nrf_fix, 0, sizeof nrf_fix);
+  clock_hh = 0;
+  clock_mm = 0;
   gps_on = true;
+  board_init();
   out->ctx = NULL;
   out->display_clear = display_clear;
   out->display_set_pixel = display_set_pixel;
@@ -180,3 +171,32 @@ void beeper_hal_init(hal_t *out) {
   out->gps_power = gps_power_fn;
   out->heading = heading_fn;
 }
+
+__attribute__((weak)) void board_init(void) {}
+__attribute__((weak)) void board_pump(void) {}
+__attribute__((weak)) void board_flush(const uint8_t *fb) { (void)fb; }
+__attribute__((weak)) encoder_event_t board_encoder_poll(void) { return ENC_NONE; }
+__attribute__((weak)) bool board_back_poll(void) { return false; }
+__attribute__((weak)) void board_random_fill(uint8_t *buf, size_t len) {
+  for (size_t i = 0; i < len; i++) buf[i] = rng_ctr++;
+}
+__attribute__((weak)) uint32_t board_now_ms(void) { return 0; }
+__attribute__((weak)) void board_gps_power(bool on) { (void)on; }
+__attribute__((weak)) bool board_heading(heading_sample_t *out) {
+  if (out) memset(out, 0, sizeof *out);
+  return false;
+}
+__attribute__((weak)) bool board_radio_poll(raw_frame_t *out) {
+  (void)out;
+  return false;
+}
+__attribute__((weak)) size_t board_nvm_load(uint8_t *out, size_t max) {
+  (void)out;
+  (void)max;
+  return 0;
+}
+__attribute__((weak)) bool board_nvm_save(const uint8_t *bytes, size_t len) {
+  (void)bytes;
+  return len <= NVM_BYTES;
+}
+__attribute__((weak)) void board_vibe(uint16_t ms) { (void)ms; }

@@ -53,18 +53,18 @@ int gps_hypot_ft(int north_ft, int east_ft) {
   return isqrt64(n);
 }
 
-const char *gps_compass(int north_ft, int east_ft) {
-  if (north_ft == 0 && east_ft == 0) return "";
+int gps_octant(int north_ft, int east_ft) {
+  if (north_ft == 0 && east_ft == 0) return -1;
   int an = north_ft < 0 ? -north_ft : north_ft;
   int ae = east_ft < 0 ? -east_ft : east_ft;
   bool ns = (int64_t)ae * 10000 < (int64_t)an * 4142;
   bool ew = (int64_t)an * 10000 < (int64_t)ae * 4142;
-  if (ns && !ew) return north_ft >= 0 ? "N" : "S";
-  if (ew && !ns) return east_ft >= 0 ? "E" : "W";
-  if (north_ft >= 0 && east_ft >= 0) return "NE";
-  if (north_ft < 0 && east_ft >= 0) return "SE";
-  if (north_ft < 0 && east_ft < 0) return "SW";
-  return "NW";
+  if (ns && !ew) return north_ft >= 0 ? 0 : 4;
+  if (ew && !ns) return east_ft >= 0 ? 2 : 6;
+  if (north_ft >= 0 && east_ft >= 0) return 1;
+  if (north_ft < 0 && east_ft >= 0) return 3;
+  if (north_ft < 0 && east_ft < 0) return 5;
+  return 7;
 }
 
 static void format_arcmin(char *dst, size_t cap, int32_t min_e4, int deg_width, char pos, char neg) {

@@ -10,7 +10,9 @@ endif()
 
 file(GLOB FW_SRC CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/firmware/src/*.c")
 file(GLOB HOST_SRC CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/firmware/host/*.c")
-set(ART_SRC "${CMAKE_SOURCE_DIR}/firmware/art/art.c")
+set(ART_SRC
+  "${CMAKE_SOURCE_DIR}/firmware/art/art.c"
+  "${CMAKE_SOURCE_DIR}/firmware/art/beeple.c")
 set(HAL_EMU_SRC "${CMAKE_SOURCE_DIR}/hal/emu/emu_hal.c")
 set(HAL_BEEPER_SRC "${CMAKE_SOURCE_DIR}/hal/beeper/beeper_hal.c")
 set(FW_LINK ${FW_SRC} ${ART_SRC} ${HOST_SRC} ${HAL_EMU_SRC})
@@ -24,13 +26,23 @@ function(peeple_test name)
 endfunction()
 
 peeple_test(page_test firmware/tests/page_test.c ${FW_LINK})
+peeple_test(relay_test firmware/tests/relay_test.c ${FW_LINK})
 peeple_test(store_test firmware/tests/store_test.c ${FW_LINK})
 
-peeple_test(mesh_test firmware/tests/mesh_test.c emu/seed.c ${FW_LINK})
-target_include_directories(mesh_test PRIVATE "${CMAKE_SOURCE_DIR}/emu")
+peeple_test(mesh_test firmware/tests/mesh_test.c ${FW_LINK})
 
-peeple_test(locate_test firmware/tests/locate_test.c ${FW_LINK} ${HAL_BEEPER_SRC})
-target_include_directories(locate_test PRIVATE "${CMAKE_SOURCE_DIR}/hal/beeper")
+peeple_test(seed_test firmware/tests/seed_test.c emu/seed.c ${FW_LINK})
+target_include_directories(seed_test PRIVATE "${CMAKE_SOURCE_DIR}/emu")
+
+peeple_test(pair_test firmware/tests/pair_test.c emu/seed.c ${FW_LINK})
+target_include_directories(pair_test PRIVATE "${CMAKE_SOURCE_DIR}/emu")
+
+peeple_test(gps_test firmware/tests/gps_test.c ${FW_LINK} ${HAL_BEEPER_SRC})
+target_include_directories(gps_test PRIVATE "${CMAKE_SOURCE_DIR}/hal/beeper")
+
+peeple_test(heading_test firmware/tests/heading_test.c ${FW_LINK})
+peeple_test(receiver_test firmware/tests/receiver_test.c ${FW_LINK})
+peeple_test(locate_test firmware/tests/locate_test.c ${FW_LINK})
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)

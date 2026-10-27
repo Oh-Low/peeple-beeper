@@ -19,30 +19,6 @@
 #define PEEP_LOCATE 0
 #define PEEP_CONTACT 1
 
-typedef struct {
-  const char *name;
-  const uint8_t *bits;
-  int w;
-  int h;
-  bool invert;
-} beeple_def_t;
-
-static const beeple_def_t BEEPLES[] = {
-    {"Voidfarer", art_voidfarers, ART_VOIDFARERS_W, ART_VOIDFARERS_H, false},
-    {"Octohat", art_octohat, ART_OCTOHAT_W, ART_OCTOHAT_H, false},
-    {"Camnon", art_camnon, ART_CAMNON_W, ART_CAMNON_H, false},
-    {"Vibey Eye", art_vibey_eye, ART_VIBEY_EYE_W, ART_VIBEY_EYE_H, false},
-    {"Alleycat", art_alleycat, ART_ALLEYCAT_W, ART_ALLEYCAT_H, false},
-    {"Beep Bop", art_beepbop, ART_BEEPBOP_W, ART_BEEPBOP_H, false},
-    {"Dino", art_dino, ART_DINO_W, ART_DINO_H, false},
-    {"Midge", art_midge, ART_MIDGE_W, ART_MIDGE_H, false},
-    {"Oscar", art_oscar, ART_OSCAR_W, ART_OSCAR_H, false},
-    {"Robort v2", art_robot, ART_ROBOT_W, ART_ROBOT_H, false},
-    {"Spooder", art_spooder, ART_SPOODER_W, ART_SPOODER_H, false},
-    {"Teef", art_teef, ART_TEEF_W, ART_TEEF_H, false},
-};
-_Static_assert(sizeof BEEPLES / sizeof BEEPLES[0] == BEEPLE_N, "beeple table");
-
 #define SET_LABEL_X 4
 #define SET_LABEL_END 60
 #define SET_RULE_X 63
@@ -80,27 +56,15 @@ void screen_init(screen_t *screen, identity_store_t *identity, contact_book_t *c
   canned_init(&screen->canned);
 }
 
-void screen_set_menu_art(screen_t *screen, const uint8_t *bits, int w, int h, bool invert) {
-  if (!screen) return;
-  if (!bits || w <= 0 || h <= 0) {
-    screen->menu_art = NULL;
-    screen->menu_art_w = 0;
-    screen->menu_art_h = 0;
-    screen->menu_art_invert = false;
-    return;
-  }
-  screen->menu_art = bits;
-  screen->menu_art_w = w;
-  screen->menu_art_h = h;
-  screen->menu_art_invert = invert;
-}
-
 void screen_set_beeple(screen_t *screen, int id) {
   if (!screen) return;
   if (id < 0 || id >= BEEPLE_N) id = 0;
   screen->beeple = id;
-  const beeple_def_t *b = &BEEPLES[id];
-  screen_set_menu_art(screen, b->bits, b->w, b->h, b->invert);
+  const beeple_def_t *b = beeple_at(id);
+  if (!b) return;
+  screen->menu_art = b->bits;
+  screen->menu_art_w = b->w;
+  screen->menu_art_h = b->h;
 }
 
 static bool deadline_live(uint32_t now, uint32_t start, uint32_t ms) {
@@ -451,6 +415,7 @@ static void on_back(screen_t *screen, const hal_t *hal) {
     if (locate_busy(screen->locate)) locate_abort(screen->locate);
     screen->loc_busy = false;
     screen->loc_need_refresh = false;
+    screen->loc_capture_wait = false;
     screen->mode = SCREEN_LOCATE;
     screen->sel = screen->contacts->n ? 1 : 0;
     return;
@@ -477,6 +442,7 @@ static void on_press(screen_t *screen, const hal_t *hal) {
     if (locate_busy(screen->locate)) locate_abort(screen->locate);
     screen->loc_busy = false;
     screen->loc_need_refresh = false;
+    screen->loc_capture_wait = false;
     screen->mode = SCREEN_LOCATE;
     screen->sel = screen->contacts->n ? 1 : 0;
     return;
@@ -723,8 +689,8 @@ static void invert_cut_corner(uint8_t *buf, int x, int y, int w, int h) {
   }
 }
 
-static void blit_slot(uint8_t *buf, const uint8_t *bits, int sw, int sh, bool invert, int dx, int dy,
-                      int bw, int bh) {
+static void blit_slot(uint8_t *buf, const uint8_t *bits, int sw, int sh, int dx, int dy, int bw,
+                      int bh) {
   if (!bits || sw <= 0 || sh <= 0 || bw <= 0 || bh <= 0) return;
   int vis_w = sw > bw ? bw : sw;
   int vis_h = sh > bh ? bh : sh;
@@ -738,16 +704,13 @@ static void blit_slot(uint8_t *buf, const uint8_t *bits, int sw, int sh, bool in
     uint8_t bit = (uint8_t)(1u << (sy & 7));
     for (int x = 0; x < vis_w; x++) {
       int i = page * sw + src_x + x;
-      bool on = (bits[i] & bit) != 0;
-      if (invert) on = !on;
-      display_set_pixel(buf, ox + x, oy + y, on);
+      display_set_pixel(buf, ox + x, oy + y, (bits[i] & bit) != 0);
     }
   }
 }
 
 static void draw_art_box(const screen_t *screen, uint8_t *buf, int dx, int dy, int bw, int bh) {
-  blit_slot(buf, screen->menu_art, screen->menu_art_w, screen->menu_art_h, screen->menu_art_invert, dx, dy,
-            bw, bh);
+  blit_slot(buf, screen->menu_art, screen->menu_art_w, screen->menu_art_h, dx, dy, bw, bh);
 }
 
 static void draw_menu_art(const screen_t *screen, uint8_t *buf) {
@@ -850,11 +813,11 @@ static void draw_beeple(screen_t *screen, uint8_t *buf) {
     int idx = start + i;
     if (idx >= BEEPLE_N) break;
     int y = y0 + i * pitch;
-    display_draw_text(buf, 4, y, BEEPLES[idx].name);
+    display_draw_text(buf, 4, y, beeple_at(idx)->name);
     if (idx == sel) invert_cut_corner(buf, 1, y - 1, MENU_HALF - 2, pitch);
   }
-  const beeple_def_t *b = &BEEPLES[sel];
-  blit_slot(buf, b->bits, b->w, b->h, b->invert, MENU_HALF, 0, MENU_HALF, MENU_HALF);
+  const beeple_def_t *b = beeple_at(sel);
+  blit_slot(buf, b->bits, b->w, b->h, MENU_HALF, 0, MENU_HALF, MENU_HALF);
 }
 
 static int small_chars_fit(int width) {
@@ -1263,8 +1226,8 @@ static void draw_send_status(screen_t *screen, const hal_t *hal, uint8_t *buf) {
   (void)hal;
   int id = screen->beeple;
   if (id < 0 || id >= BEEPLE_N) id = 0;
-  const beeple_def_t *b = &BEEPLES[id];
-  blit_slot(buf, b->bits, b->w, b->h, b->invert, MENU_HALF, 0, MENU_HALF, MENU_HALF);
+  const beeple_def_t *b = beeple_at(id);
+  blit_slot(buf, b->bits, b->w, b->h, MENU_HALF, 0, MENU_HALF, MENU_HALF);
   draw_slant_bar(buf, "SENDING");
   if (screen->mode == SCREEN_SENT) {
     draw_status_line(buf, 30, "BEEP");
@@ -1407,8 +1370,8 @@ static void draw_tracked(screen_t *screen, const hal_t *hal, uint8_t *buf) {
 static void draw_alert(screen_t *screen, const hal_t *hal, uint8_t *buf) {
   int beeple = screen->has_alert ? screen->alert.beeple : BEEPLE_NONE;
   if (beeple >= 0 && beeple < BEEPLE_N) {
-    const beeple_def_t *b = &BEEPLES[beeple];
-    blit_slot(buf, b->bits, b->w, b->h, b->invert, MENU_HALF, 0, MENU_HALF, MENU_HALF);
+    const beeple_def_t *b = beeple_at(beeple);
+    blit_slot(buf, b->bits, b->w, b->h, MENU_HALF, 0, MENU_HALF, MENU_HALF);
     draw_slant_bar(buf, "NEW BEEP");
   } else {
     draw_slant_bar(buf, "NEW BEEP");
@@ -1507,6 +1470,7 @@ void screen_poll_locate(screen_t *screen) {
   screen->mode = SCREEN_LOCREAD;
   screen->loc_holding = false;
   screen->loc_need_refresh = false;
+  screen->loc_capture_wait = false;
 }
 
 void screen_poll_pose(screen_t *screen, const hal_t *hal) {
@@ -1520,8 +1484,19 @@ void screen_poll_pose(screen_t *screen, const hal_t *hal) {
   heading_view(&sample, view.north_ft, view.east_ft, hal->now_ms(hal->ctx), &screen->loc_holding,
                &screen->loc_hold_since, &pose);
   if (pose.hold_flat || pose.hold_still) screen->loc_need_refresh = true;
+  if (screen->locate->gps_listening) return;
+  if (screen->loc_capture_wait) {
+    screen->loc_capture_wait = false;
+    if (locate_busy(screen->locate)) return;
+    if (locate_refresh(screen->locate, hal, screen->contacts)) screen->loc_need_refresh = false;
+    return;
+  }
   if (!pose.ready || !screen->loc_need_refresh) return;
   locate_gps_capture(screen->locate, hal);
+  if (screen->locate->gps_listening) {
+    screen->loc_capture_wait = true;
+    return;
+  }
   if (locate_busy(screen->locate)) return;
   if (locate_refresh(screen->locate, hal, screen->contacts)) {
     screen->loc_need_refresh = false;
@@ -1599,6 +1574,7 @@ void screen_reset(screen_t *screen) {
   screen->loc_busy = false;
   screen->loc_holding = false;
   screen->loc_need_refresh = false;
+  screen->loc_capture_wait = false;
   text_edit_reset(&screen->edit);
   canned_reset(&screen->canned);
   screen->vibe_test = false;

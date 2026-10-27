@@ -359,11 +359,16 @@ void locate_gps_soon(locate_radio_t *loc) {
 
 void locate_gps_capture(locate_radio_t *loc, const hal_t *hal) {
   if (!loc || !hal) return;
-  bool was_listening = loc->gps_listening;
-  if (!was_listening) gps_power(hal, true);
+  if (loc->gps_listening) return;
+  gps_power(hal, true);
   gps_fix_t fix;
-  if (read_fix(hal, &fix)) remember_fix(loc, hal, fix.lat_min_e4, fix.lon_min_e4);
-  if (!was_listening) gps_power(hal, false);
+  if (read_fix(hal, &fix)) {
+    remember_fix(loc, hal, fix.lat_min_e4, fix.lon_min_e4);
+    gps_power(hal, false);
+    return;
+  }
+  loc->gps_listening = true;
+  loc->gps_listen_at = hal->now_ms(hal->ctx);
 }
 
 void locate_gps_tick(locate_radio_t *loc, const hal_t *hal) {

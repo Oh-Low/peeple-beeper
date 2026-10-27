@@ -3,6 +3,7 @@ logs
 *.log
 
 build/
+.toolchain/
 emu-nvm-*.bin
 
 # Editor directories and files

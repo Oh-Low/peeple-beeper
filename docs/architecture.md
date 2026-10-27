@@ -44,14 +44,14 @@ Tick order, frame types, and crypto are in [firmware-app.md](firmware-app.md) an
 |------|------|
 | `hal/hal.h` | HAL contract (`hal_t` ops + `ctx`). Shared. Not an implementation. |
 | `hal/emu/` | RAM HAL for tests and the desktop emulator. |
-| `hal/beeper/` | Beeper board HAL. Today this is the nRF52840 stub (`make nrf-check`). |
+| `hal/beeper/` | Feather board HAL. `make beeper` links `board.c`. `make nrf-check` compiles the table without it. |
 | `firmware/include/beeper.h` | `beeper_init` / `tick` / `reset` / `debug_key`. |
 | `firmware/src/*.c` | Screen, message session, pair, locate, store, display, crypto, frames. |
 | `firmware/host/` | Desktop foot-grid and RSSI (`mesh.c`) only. Tests and the emulator. |
 | `firmware/art/` | Generated 1-bit picture bytes (`art.c`). |
-| `firmware/tests/` | `page_test`, `store_test`, `mesh_test`, `locate_test`. |
+| `firmware/tests/` | `page_test`, `relay_test`, `store_test`, `mesh_test`, `seed_test`, `pair_test`, `gps_test`, `heading_test`, `receiver_test`, `locate_test`. |
 | `emu/` | SDL2 window + `seed.c` host directory. |
-| `Makefile` | `make test`, `make emu`, `make nrf-check`. |
+| `Makefile` | `make test`, `make emu`, `make nrf-check`, `make bringup`, `make beeper`. |
 | `docs/` | This map and protocol/app/HAL notes. |
 | `tools/png_to_art.py` | Any PNG to a 1-bit C array. |
 | `tools/beeple_to_art.py` | Mascot PNGs into `firmware/art`. |
@@ -75,13 +75,13 @@ A change lands in the file that already owns that decision. When two files would
 | Wire layout of every frame | `frames.c` | Sessions call encode and decode. |
 | SHA-256 session key, seal, ack tag, locate tag | `crypto.c` | Sessions pass bytes in. |
 | Attempt loop for a sealed send: nonce list, attempt count, next-send time, accept a reply only from that peer on a stored nonce while the send is in flight | `attempt.c`. A page is nine tries, ten seconds then a minute. A locate is four tries, two seconds apart. The screen asks the session whether the first wait has elapsed. | Text, mascot, fix, denial, and no-sky stay in the session that owns them. `message.c` and `locate.c` stay two files. |
-| Forward cache: remember a frame, wait 80–400 ms, decrement the hop, send once, cancel a request when its reply is already stored | `relay.c`. `message.c` and `locate.c` each still decide which frames enter a cache. | Sessions hand it a frame. A new entry rule is written once, in `relay.c`. |
-| Eight-way cut of a north/east offset, boundary at the tangent of 22.5° | One function. `gps.c` still has a second copy of the cut. | Hold flat, hold still, the 400 ms wait, and the arrow in the device frame stay in `heading.c`. |
-| Empty display name shown as the last four hex digits of the id | `identity.c`. `contacts.c` still has its own copy for a blank paired name. | A contact book calls the identity rule. |
+| Forward cache: remember a frame, wait 80–400 ms, decrement the hop, send once, cancel a request when its reply is already stored | `relay.c`. `message.c` and `locate.c` each decide which frames enter a cache. `relay_test` is the proof of that cache. | Sessions hand it a frame. A new entry rule is written once, in `relay.c`. |
+| Eight-way cut of a north/east offset, boundary at the tangent of 22.5° | `gps_octant` in `gps.c`. | Hold flat, hold still, the 400 ms wait, and the arrow in the device frame stay in `heading.c`. |
+| Empty display name shown as the last four hex digits of the id | `identity_blank_name` in `identity.c`. | A contact book calls it. |
 | Receiver schedule and the stored fix: listen up to a minute about every half hour, keep one fix | Its own unit, called from `beeper_tick`. | The locate nonce list and the Allow/Deny queue stay on the locate session. Locate reads the stored fix when it answers. |
-| RMC sentence | `nmea.c`, the only parser | The board HAL pushes UART bytes into it. The RAM HAL stores a fix the bench already built. |
+| RMC sentence | `nmea.c`, the only parser | The board HAL holds the partial line and pushes UART bytes into it. The RAM HAL stores a fix the bench already built. |
 | Foot grid, arcminutes, distance | `gps.c` | |
-| Mascot index, menu label, and bitmap | Generated next to `firmware/art/art.c`. The screen indexes the catalog. | `png_to_art.py` packs any PNG. `beeple_to_art.py` writes the bytes and the catalog. Today `--write` still splices the `BEEPLES` table in `screen.c`. Arrows and side decorations are sprites in `art.c`. They are separate from mascot indexes. |
+| Mascot index, menu label, and bitmap | `beeple.h` is the index. `firmware/art/beeple.c` is the name and pixel catalog. The screen asks `beeple_at`. | `png_to_art.py` packs any PNG. `beeple_to_art.py` writes the bytes and the catalog. Arrows and side decorations are sprites in `art.c`. They are separate from mascot indexes. |
 
 `display.c`, `textedit.c`, `canned.c`, `store.c`, and `emu/font.c` are already one concept each. The bench font is the SDL atlas for the window chrome. The panel font is the 5×7 and 3×6 bitmaps in `display.c`. Leave them apart. Folding `frames.c` or `crypto.c` into a session would put the wire format in whichever session was nearest.
 
@@ -140,10 +140,14 @@ A test file is named for the decision it pins. A new proof of a decision goes in
 | Before changing | Run |
 |-----------------|-----|
 | Page session, ack, frames, page crypto | `page_test` |
-| Forward cache: jitter, hop drop, already-sent | `page_test` and `locate_test`, until that proof has one file |
+| Forward cache: jitter, hop drop, already-sent | `relay_test` |
 | Locate session, Allow/Deny, tracking warning | `locate_test` |
-| Foot grid, RMC, eight-way cut, receiver schedule | `locate_test` today. A change to the cut or the listen schedule belongs in a test named for that decision. |
-| Desktop mesh, contact seeding, restarting a pair | `mesh_test` |
+| Foot grid and RMC | `gps_test` |
+| Eight-way arrow | `heading_test` |
+| Receiver schedule | `receiver_test` |
+| Desktop mesh: RSSI and who hears whom | `mesh_test` |
+| Contact seeding | `seed_test` |
+| Restarting a pair | `pair_test` |
 | NVM blob round-trip, including the storage-budget guard | `store_test` |
 
 **HAL-only firmware.** Production files under `firmware/src` and `firmware/art` must not assume SDL or files. They call `hal->foo(hal->ctx, ...)`. They include `hal/hal.h` and no file under `hal/emu` or `hal/beeper`. The desktop mesh lives in `firmware/host`.

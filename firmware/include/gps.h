@@ -14,7 +14,7 @@ void gps_from_feet(int east_ft, int north_ft, gps_fix_t *out);
 void gps_delta_ft(int32_t lat_a, int32_t lon_a, int32_t lat_b, int32_t lon_b, int *north_ft,
                   int *east_ft);
 int gps_hypot_ft(int north_ft, int east_ft);
-/* Empty string when both axes are zero. */
-const char *gps_compass(int north_ft, int east_ft);
+/* The cut is tan(22.5°). */
+int gps_octant(int north_ft, int east_ft);
 void gps_format_lat(char *dst, size_t cap, int32_t lat_min_e4);
 void gps_format_lon(char *dst, size_t cap, int32_t lon_min_e4);
