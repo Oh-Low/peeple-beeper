@@ -9,7 +9,10 @@ static int budget_of(attempt_kind_t kind) {
 }
 
 static uint32_t wait_after(const attempt_t *a) {
-  if (a->kind == ATTEMPT_LOCATE) return ATTEMPT_LOCATE_MS;
+  if (a->kind == ATTEMPT_LOCATE) {
+    if (a->attempts + 1 >= ATTEMPT_LOCATE_BUDGET) return ATTEMPT_LOCATE_MS + ATTEMPT_LOCATE_TAIL_MS;
+    return ATTEMPT_LOCATE_MS;
+  }
   if (a->attempts + 1 < ATTEMPT_PAGE_FAST) return ATTEMPT_PAGE_FAST_MS;
   return ATTEMPT_PAGE_SLOW_MS;
 }

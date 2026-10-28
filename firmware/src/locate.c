@@ -184,6 +184,56 @@ static void hold_ask(locate_radio_t *loc, const uint8_t *id, const uint8_t *nonc
   loc->ask_n++;
 }
 
+static void gps_power(const hal_t *hal, bool on);
+
+static void hunt_begin(locate_radio_t *loc, const hal_t *hal) {
+  loc->fix_hunt = true;
+  gps_power(hal, true);
+}
+
+static void hunt_end(locate_radio_t *loc, const hal_t *hal, uint32_t now) {
+  loc->fix_hunt = false;
+  loc->gps_listening = false;
+  if (!loc->saved_fix) {
+    loc->gps_next_on = now;
+    return;
+  }
+  gps_power(hal, false);
+  loc->gps_next_on = now + GPS_SAMPLE_PERIOD_MS;
+}
+
+static bool warn_quiet(locate_radio_t *loc, const hal_t *hal, const uint8_t *src) {
+  uint32_t now = hal->now_ms(hal->ctx);
+  return node_id_equal(loc->tracked_id, src) && loc->tracked_quiet != 0 &&
+         !time_reached(now, loc->tracked_quiet);
+}
+
+static void arm_ask(locate_radio_t *loc, const hal_t *hal, const loc_req_payload_t *req) {
+  uint32_t now = hal->now_ms(hal->ctx);
+  bool was_empty = loc->ask_n == 0;
+  hold_ask(loc, req->src_id, req->nonce);
+  if (!loc->fix_hunt) hunt_begin(loc, hal);
+  if (!was_empty) return;
+  loc->ask_alert_ready = false;
+  loc->ask_alert_at = now + GPS_ALERT_MS;
+}
+
+static void arm_open_reply(locate_radio_t *loc, const hal_t *hal, const loc_req_payload_t *req) {
+  uint32_t now = hal->now_ms(hal->ctx);
+  if (loc->reply_due && !node_id_equal(loc->reply_id, req->src_id)) return;
+  bool same = loc->reply_due && node_id_equal(loc->reply_id, req->src_id);
+  memcpy(loc->reply_id, req->src_id, NODE_ID_LEN);
+  memcpy(loc->reply_nonce, req->nonce, PAGE_NONCE_LEN);
+  if (!loc->fix_hunt) hunt_begin(loc, hal);
+  if (same) return;
+  loc->reply_due = true;
+  loc->reply_at = now + GPS_OPEN_REPLY_MS;
+  if (!loc->track_open || warn_quiet(loc, hal, req->src_id)) return;
+  loc->alert_due = true;
+  loc->alert_at = now + GPS_ALERT_MS;
+  memcpy(loc->alert_id, req->src_id, NODE_ID_LEN);
+}
+
 static void answer_req(locate_radio_t *loc, identity_store_t *identity, contact_book_t *contacts,
                        const hal_t *hal, const loc_req_payload_t *req) {
   const contact_t *contact = contacts_find_by_id(contacts, req->src_id);
@@ -191,11 +241,14 @@ static void answer_req(locate_radio_t *loc, identity_store_t *identity, contact_
   if (!loc_req_check(contact->session_key, req->nonce, req->mac)) return;
   uint32_t now = hal->now_ms(hal->ctx);
   if (!loc->track_open && !grant_live(loc, req->src_id, now)) {
-    hold_ask(loc, req->src_id, req->nonce);
+    arm_ask(loc, hal, req);
+    return;
+  }
+  if (loc->track_open) {
+    arm_open_reply(loc, hal, req);
     return;
   }
   send_loc(loc, hal, identity, req->src_id, req->nonce, contact->session_key, false);
-  if (loc->track_open) note_tracked(loc, hal, req->src_id);
 }
 
 static void try_accept(locate_radio_t *loc, identity_store_t *identity, contact_book_t *contacts,
@@ -364,7 +417,7 @@ void locate_gps_soon(locate_radio_t *loc) {
 
 void locate_gps_capture(locate_radio_t *loc, const hal_t *hal) {
   if (!loc || !hal) return;
-  if (loc->gps_listening) return;
+  if (loc->gps_listening || loc->fix_hunt) return;
   gps_power(hal, true);
   gps_fix_t fix;
   if (read_fix(hal, &fix)) {
@@ -379,15 +432,17 @@ void locate_gps_capture(locate_radio_t *loc, const hal_t *hal) {
 void locate_gps_tick(locate_radio_t *loc, const hal_t *hal) {
   if (!loc || !hal) return;
   uint32_t now = hal->now_ms(hal->ctx);
-  if (loc->gps_listening) {
+  if (loc->gps_listening || loc->fix_hunt) {
     gps_fix_t fix;
     if (read_fix(hal, &fix)) {
       remember_fix(loc, hal, fix.lat_min_e4, fix.lon_min_e4);
+      if (loc->gps_listening && !loc->fix_hunt) gps_listen_end(loc, hal, now);
+    } else if (loc->gps_listening && !loc->fix_hunt &&
+               elapsed_u32(now, loc->gps_listen_at) >= GPS_LISTEN_MS) {
       gps_listen_end(loc, hal, now);
-      return;
     }
-    if (elapsed_u32(now, loc->gps_listen_at) >= GPS_LISTEN_MS) gps_listen_end(loc, hal, now);
-    return;
+    if (loc->fix_hunt) return;
+    if (loc->gps_listening) return;
   }
   if (time_reached(now, loc->gps_next_on)) gps_listen_begin(loc, hal, now);
 }
@@ -398,11 +453,36 @@ void locate_clear_reply(locate_radio_t *loc) {
 
 bool locate_sent_reply(const locate_radio_t *loc) { return loc && loc->reply_air; }
 
+static void flush_track(locate_radio_t *loc, identity_store_t *identity, contact_book_t *contacts,
+                        const hal_t *hal) {
+  uint32_t now = hal->now_ms(hal->ctx);
+  if (loc->fix_hunt) {
+    gps_fix_t fix;
+    if (read_fix(hal, &fix)) remember_fix(loc, hal, fix.lat_min_e4, fix.lon_min_e4);
+  }
+  if (loc->ask_n > 0 && !loc->ask_alert_ready && time_reached(now, loc->ask_alert_at))
+    loc->ask_alert_ready = true;
+  if (loc->alert_due && time_reached(now, loc->alert_at)) {
+    note_tracked(loc, hal, loc->alert_id);
+    loc->alert_due = false;
+  }
+  if (!loc->reply_due || !time_reached(now, loc->reply_at)) return;
+  const contact_t *contact = contacts_find_by_id(contacts, loc->reply_id);
+  uint8_t id[NODE_ID_LEN];
+  uint8_t nonce[PAGE_NONCE_LEN];
+  memcpy(id, loc->reply_id, NODE_ID_LEN);
+  memcpy(nonce, loc->reply_nonce, PAGE_NONCE_LEN);
+  loc->reply_due = false;
+  if (contact) send_loc(loc, hal, identity, id, nonce, contact->session_key, false);
+  if (loc->ask_n == 0) hunt_end(loc, hal, now);
+}
+
 void locate_tick(locate_radio_t *loc, identity_store_t *identity, contact_book_t *contacts,
                  const hal_t *hal) {
-  if (!loc) return;
+  if (!loc || !hal) return;
   outbox_tick(loc, identity, contacts, hal);
   relay_tick(&loc->relay, hal);
+  flush_track(loc, identity, contacts, hal);
 }
 
 void locate_set_open(locate_radio_t *loc, bool open) {
@@ -412,7 +492,9 @@ void locate_set_open(locate_radio_t *loc, bool open) {
 
 bool locate_is_open(const locate_radio_t *loc) { return loc && loc->track_open; }
 
-bool locate_ask_pending(const locate_radio_t *loc) { return loc && loc->ask_n > 0; }
+bool locate_ask_pending(const locate_radio_t *loc) {
+  return loc && loc->ask_n > 0 && loc->ask_alert_ready;
+}
 
 bool locate_ask_id(const locate_radio_t *loc, uint8_t id[NODE_ID_LEN]) {
   if (!loc || loc->ask_n <= 0 || !id) return false;
@@ -426,12 +508,22 @@ static bool answer_pending(locate_radio_t *loc, const hal_t *hal, identity_store
   const contact_t *contact = contacts_find_by_id(contacts, loc->ask[0].id);
   uint8_t id[NODE_ID_LEN];
   uint8_t nonce[PAGE_NONCE_LEN];
+  uint32_t now = hal->now_ms(hal->ctx);
   memcpy(id, loc->ask[0].id, NODE_ID_LEN);
   memcpy(nonce, loc->ask[0].nonce, PAGE_NONCE_LEN);
   drop_ask_head(loc);
-  if (!contact) return false;
+  if (!contact) {
+    if (loc->ask_n == 0 && !loc->reply_due) hunt_end(loc, hal, now);
+    return false;
+  }
   send_loc(loc, hal, identity, id, nonce, contact->session_key, deny);
-  if (!deny) grant_remember(loc, id, hal->now_ms(hal->ctx));
+  if (!deny) grant_remember(loc, id, now);
+  if (loc->ask_n > 0) {
+    loc->ask_alert_ready = false;
+    loc->ask_alert_at = now + GPS_ALERT_MS;
+  } else if (!loc->reply_due) {
+    hunt_end(loc, hal, now);
+  }
   return true;
 }
 

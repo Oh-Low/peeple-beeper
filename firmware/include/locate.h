@@ -13,6 +13,10 @@
 /* Wake the receiver on this period and listen this long for one fix. */
 #define GPS_SAMPLE_PERIOD_MS (30u * 60u * 1000u)
 #define GPS_LISTEN_MS (60u * 1000u)
+/* A locate request waits this long before the track alert. */
+#define GPS_ALERT_MS ATTEMPT_LOCATE_TAIL_MS
+/* Open tracking sends after this. No new lock sends the last fix. */
+#define GPS_OPEN_REPLY_MS 7000u
 /* One warning per requester until this quiet time passes. */
 #define TRACK_WARN_MS 12000u
 /* After Allow, that contact is answered without another prompt. */
@@ -49,6 +53,16 @@ struct locate_radio {
   bool gps_listening;
   uint32_t gps_listen_at;
   uint32_t gps_next_on;
+  bool fix_hunt;
+  bool reply_due;
+  uint32_t reply_at;
+  uint8_t reply_id[NODE_ID_LEN];
+  uint8_t reply_nonce[PAGE_NONCE_LEN];
+  bool alert_due;
+  uint32_t alert_at;
+  uint8_t alert_id[NODE_ID_LEN];
+  bool ask_alert_ready;
+  uint32_t ask_alert_at;
   relay_cache_t relay;
   /* Tests start open. A device with no saved setting asks before it answers. */
   bool track_open;
@@ -94,8 +108,9 @@ void locate_gps_soon(locate_radio_t *loc);
 /* Read one fix now. Used when the unit returns to flat and still. */
 void locate_gps_capture(locate_radio_t *loc, const hal_t *hal);
 
-/* Open tracking answers a paired contact immediately. Otherwise the unit asks,
-   unless Allow for that contact is still inside TRACK_ALLOW_MS. */
+/* Open tracking turns the receiver on and answers after GPS_OPEN_REPLY_MS.
+   Otherwise the unit asks after GPS_ALERT_MS, unless Allow for that contact
+   is still inside TRACK_ALLOW_MS. */
 void locate_set_open(locate_radio_t *loc, bool open);
 bool locate_is_open(const locate_radio_t *loc);
 bool locate_ask_pending(const locate_radio_t *loc);

@@ -13,6 +13,8 @@
 #define ATTEMPT_PAGE_SLOW_MS 60000u
 #define ATTEMPT_LOCATE_BUDGET 4
 #define ATTEMPT_LOCATE_MS 2000u
+/* The track alert is delayed. The last wait stays open through that delay. */
+#define ATTEMPT_LOCATE_TAIL_MS 5000u
 #define ATTEMPT_NONCE_MAX ATTEMPT_PAGE_BUDGET
 
 typedef enum {

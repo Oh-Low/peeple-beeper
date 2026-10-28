@@ -152,6 +152,11 @@ static __attribute__((unused)) bool open_loc(const uint8_t *frame, size_t len, g
   return true;
 }
 
+static __attribute__((unused)) void elapse(unit_t *u, uint32_t ms) {
+  u->ram.now_ms += ms;
+  tick(u);
+}
+
 static __attribute__((unused)) void exchange(unit_t *from, unit_t *to) {
   tick(from);
   uint8_t frames[TX_MAX][RAW_FRAME_MAX];

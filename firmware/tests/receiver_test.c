@@ -23,6 +23,7 @@ static void test_gps_sample(void) {
   id_byte(dest, 2);
   CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "locate");
   exchange(&a, &b);
+  elapse(&b, GPS_OPEN_REPLY_MS);
   exchange(&b, &a);
   locate_view_t view;
   locate_format(&a.locate, &a.hal, &view);
@@ -32,7 +33,7 @@ static void test_gps_sample(void) {
   set_grid(&b, 40, 0);
   b.ram.hh = 9;
   b.ram.mm = 0;
-  b.ram.now_ms = GPS_SAMPLE_PERIOD_MS;
+  b.ram.now_ms = b.locate.gps_next_on;
   locate_gps_tick(&b.locate, &b.hal);
   locate_gps_tick(&b.locate, &b.hal);
   CHECK_EQ(b.locate.saved_hh, 9, "later sample updates the time");

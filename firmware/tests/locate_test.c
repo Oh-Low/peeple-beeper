@@ -11,6 +11,7 @@ static void test_direct(void) {
   id_byte(dest, 2);
   CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "locate");
   exchange(&a, &b);
+  elapse(&b, GPS_OPEN_REPLY_MS);
   uint8_t frames[4][RAW_FRAME_MAX];
   uint8_t lens[4];
   int n = take_sent(&b, frames, lens, 4);
@@ -48,6 +49,7 @@ static void test_corner_wire(void) {
   id_byte(dest, 2);
   CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "locate");
   exchange(&a, &b);
+  elapse(&b, GPS_OPEN_REPLY_MS);
   uint8_t frames[4][RAW_FRAME_MAX];
   uint8_t lens[4];
   int n = take_sent(&b, frames, lens, 4);
@@ -75,6 +77,7 @@ static void test_no_sky(void) {
   id_byte(dest, 2);
   CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "locate");
   exchange(&a, &b);
+  elapse(&b, GPS_OPEN_REPLY_MS);
   exchange(&b, &a);
   CHECK_EQ(locate_status(&a.locate), LOCATE_NO_SKY, "no sky");
   locate_view_t view;
@@ -132,7 +135,7 @@ static void test_no_reply(void) {
   }
   CHECK_EQ(take_sent(&a, frames, lens, 8), ATTEMPT_LOCATE_BUDGET - 1, "retries");
   CHECK_EQ(locate_status(&a.locate), LOCATE_SENDING, "still waiting");
-  a.ram.now_ms = ATTEMPT_LOCATE_BUDGET * ATTEMPT_LOCATE_MS;
+  a.ram.now_ms = ATTEMPT_LOCATE_BUDGET * ATTEMPT_LOCATE_MS + ATTEMPT_LOCATE_TAIL_MS;
   tick(&a);
   CHECK_EQ(take_sent(&a, frames, lens, 8), 0, "no fifth TX");
   CHECK_EQ(locate_status(&a.locate), LOCATE_NO_REPLY, "no reply");
@@ -159,6 +162,7 @@ static void test_hop(void) {
   exchange(&a, &b);
   relay_once(&b);
   exchange(&b, &c);
+  elapse(&c, GPS_OPEN_REPLY_MS);
   CHECK_EQ(c.tx.n, 1, "C replies");
   CHECK_EQ(frame_type(c.tx.frames[0], c.tx.lens[0]), FRAME_LOC, "reply is LOC");
   exchange(&c, &b);
@@ -234,6 +238,7 @@ static void test_refresh(void) {
   id_byte(dest, 2);
   CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "locate");
   exchange(&a, &b);
+  elapse(&b, GPS_OPEN_REPLY_MS);
   exchange(&b, &a);
   CHECK_EQ(locate_status(&a.locate), LOCATE_FOUND, "found");
   locate_view_t view;
@@ -253,6 +258,7 @@ static void test_refresh(void) {
   CHECK(strcmp(view.dist, "50 ft") == 0, "old target until the reply");
   CHECK(strcmp(view.when, "09:05") == 0, "time stays until a new fix");
   exchange(&a, &b);
+  elapse(&b, GPS_OPEN_REPLY_MS);
   exchange(&b, &a);
   CHECK_EQ(locate_status(&a.locate), LOCATE_FOUND, "refreshed");
   CHECK(a.locate.their_lon != kept, "new target longitude");
@@ -270,7 +276,7 @@ static void test_refresh(void) {
     a.ram.now_ms = (uint32_t)(i * ATTEMPT_LOCATE_MS);
     tick(&a);
   }
-  a.ram.now_ms = ATTEMPT_LOCATE_BUDGET * ATTEMPT_LOCATE_MS;
+  a.ram.now_ms = ATTEMPT_LOCATE_BUDGET * ATTEMPT_LOCATE_MS + ATTEMPT_LOCATE_TAIL_MS;
   tick(&a);
   CHECK_EQ(locate_status(&a.locate), LOCATE_FOUND, "failed refresh keeps the fix");
   CHECK_EQ(a.locate.their_lon, kept, "old longitude");
@@ -282,6 +288,7 @@ static void test_refresh(void) {
   b.ram.mm = 0;
   CHECK(locate_refresh(&a.locate, &a.hal, &a.contacts), "refresh no sky");
   exchange(&a, &b);
+  elapse(&b, GPS_OPEN_REPLY_MS);
   exchange(&b, &a);
   CHECK_EQ(locate_status(&a.locate), LOCATE_FOUND, "no sky keeps the fix");
   CHECK_EQ(a.locate.their_lon, kept, "no sky keeps the longitude");
@@ -303,16 +310,19 @@ static void test_track_consent(void) {
   CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "ask locate");
   exchange(&a, &b);
   CHECK_EQ(b.tx.n, 0, "ask holds the reply");
-  CHECK(locate_ask_pending(&b.locate), "prompt waiting");
+  CHECK(!locate_ask_pending(&b.locate), "alert waits");
   a.ram.now_ms = ATTEMPT_LOCATE_MS;
   tick(&a);
   exchange(&a, &b);
   CHECK_EQ(b.tx.n, 0, "retry still waits");
+  elapse(&b, GPS_ALERT_MS);
+  CHECK(locate_ask_pending(&b.locate), "prompt waiting");
   CHECK(locate_allow(&b.locate, &b.hal, &b.identity, &b.contacts), "allow");
   exchange(&b, &a);
   CHECK_EQ(a.locate.status, LOCATE_FOUND, "allowed fix");
 
-  b.ram.now_ms = TRACK_ALLOW_MS - 1;
+  uint32_t granted = b.ram.now_ms;
+  b.ram.now_ms = granted + TRACK_ALLOW_MS - 1;
   CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "refresh in window");
   exchange(&a, &b);
   CHECK(!locate_ask_pending(&b.locate), "no prompt inside 30 min");
@@ -320,9 +330,10 @@ static void test_track_consent(void) {
   exchange(&b, &a);
   CHECK_EQ(a.locate.status, LOCATE_FOUND, "refresh fix");
 
-  b.ram.now_ms = TRACK_ALLOW_MS;
+  b.ram.now_ms = granted + TRACK_ALLOW_MS;
   CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "deny locate");
   exchange(&a, &b);
+  elapse(&b, GPS_ALERT_MS);
   CHECK(locate_ask_pending(&b.locate), "asks again after 30 min");
   CHECK(locate_deny(&b.locate, &b.hal, &b.identity, &b.contacts), "deny");
   uint8_t flags = 0;
@@ -339,6 +350,8 @@ static void test_track_consent(void) {
   locate_set_open(&b.locate, true);
   CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "open locate");
   exchange(&a, &b);
+  CHECK(!locate_tracked(&b.locate), "warning waits");
+  elapse(&b, GPS_OPEN_REPLY_MS);
   CHECK(locate_tracked(&b.locate), "open track warns");
   uint8_t id[NODE_ID_LEN];
   CHECK(locate_tracked_id(&b.locate, id), "tracked id");
@@ -348,12 +361,14 @@ static void test_track_consent(void) {
 
   CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "quiet locate");
   exchange(&a, &b);
+  elapse(&b, GPS_OPEN_REPLY_MS);
   CHECK(!locate_tracked(&b.locate), "quiet window");
   exchange(&b, &a);
 
-  b.ram.now_ms = TRACK_ALLOW_MS + TRACK_WARN_MS;
+  b.ram.now_ms += TRACK_WARN_MS;
   CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "later locate");
   exchange(&a, &b);
+  elapse(&b, GPS_ALERT_MS);
   CHECK(locate_tracked(&b.locate), "warns again after the window");
   pass("tracking asks, denies, and warns when open");
 }
@@ -399,6 +414,7 @@ static void test_track_ask_queue(void) {
   CHECK_EQ(a.locate.status, LOCATE_FOUND, "Ada got the fix");
   CHECK_EQ(c.locate.status, LOCATE_SENDING, "Cy still waiting on a fix");
 
+  elapse(&b, GPS_ALERT_MS);
   CHECK(locate_ask_pending(&b.locate), "Cy is next");
   CHECK(locate_ask_id(&b.locate, id), "second prompt");
   CHECK(node_id_equal(id, c.identity.node_id), "prompt is Cy");
@@ -424,6 +440,7 @@ static void test_track_prompt_drops_queued_input(void) {
   id_byte(dest, 2);
   CHECK(locate_tx(&a.locate, &a.hal, dest, &a.contacts), "Ada asks");
   exchange(&a, &b);
+  elapse(&b, GPS_ALERT_MS);
   CHECK(locate_ask_pending(&b.locate), "pending before the screen");
 
   pair_session_t pair;
