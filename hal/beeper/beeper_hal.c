@@ -106,6 +106,11 @@ static void vibe(void *ctx, uint16_t ms) {
   board_vibe(ms);
 }
 
+static void backlight_fn(void *ctx, bool on) {
+  (void)ctx;
+  board_backlight(on);
+}
+
 static void beep(void *ctx, uint16_t ms) {
   (void)ctx;
   (void)ms;
@@ -171,6 +176,7 @@ void beeper_hal_init(hal_t *out) {
   out->gps_fix = gps_fix_fn;
   out->gps_power = gps_power_fn;
   out->heading = heading_fn;
+  out->backlight = backlight_fn;
 }
 
 __attribute__((weak)) void board_init(void) {}
@@ -206,3 +212,4 @@ __attribute__((weak)) bool board_nvm_save(const uint8_t *bytes, size_t len) {
   return len <= NVM_BYTES;
 }
 __attribute__((weak)) void board_vibe(uint16_t ms) { (void)ms; }
+__attribute__((weak)) void board_backlight(bool on) { (void)on; }

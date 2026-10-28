@@ -37,6 +37,7 @@ enum {
   SET_TRACK,
   SET_CLOCK,
   SET_DARK,
+  SET_LIGHT,
   SET_VIBE,
   SET_N
 };
@@ -51,6 +52,7 @@ void screen_init(screen_t *screen, identity_store_t *identity, contact_book_t *c
   screen->locate = locate;
   screen->mode = SCREEN_MENU;
   screen->show_clock_bat = true;
+  screen->backlight_on = true;
   screen_set_beeple(screen, 0);
   text_edit_init(&screen->edit);
   canned_init(&screen->canned);
@@ -531,6 +533,11 @@ static void on_press(screen_t *screen, const hal_t *hal) {
     }
     if (screen->sel == SET_DARK) {
       screen->dark_mode = !screen->dark_mode;
+      return;
+    }
+    if (screen->sel == SET_LIGHT) {
+      screen->backlight_on = !screen->backlight_on;
+      hal->backlight(hal->ctx, screen->backlight_on);
       return;
     }
     if (screen->sel == SET_VIBE) {
@@ -1272,7 +1279,7 @@ static void name_for(screen_t *screen, const uint8_t *id, char *out, size_t n) {
 }
 
 static const char *SET_LABEL[SET_N] = {
-    "BACK", "NAME", "TRACKING", "CLOCK BAT", "DARK MODE", "VIBE TEST",
+    "BACK", "NAME", "TRACKING", "CLOCK BAT", "DARK MODE", "BACKLIGHT", "VIBE TEST",
 };
 
 static void small_fit_left(char *dst, size_t cap, const char *src, int x0, int end_ink) {
@@ -1310,6 +1317,7 @@ static void settings_value(const screen_t *screen, int idx, char *out, size_t ca
     str_copy_max(out, cap, locate_is_open(screen->locate) ? "open" : "ask", 8);
   else if (idx == SET_CLOCK) str_copy_max(out, cap, screen->show_clock_bat ? "on" : "off", 4);
   else if (idx == SET_DARK) str_copy_max(out, cap, screen->dark_mode ? "on" : "off", 4);
+  else if (idx == SET_LIGHT) str_copy_max(out, cap, screen->backlight_on ? "on" : "off", 4);
   else if (idx == SET_VIBE) str_copy_max(out, cap, screen->vibe_test ? "on" : "off", 4);
 }
 

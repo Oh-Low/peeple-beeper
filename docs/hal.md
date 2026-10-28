@@ -41,6 +41,7 @@ Host-only hooks (`emu_hal_push_encoder`, `emu_hal_push_raw`, `on_tx_raw`, …) a
 | `gps_fix` | Latest GPS fix while the receiver is on, or no fix |
 | `gps_power` | Drive the GPS enable pin |
 | `heading` | Tilt, stillness, motor, and degrees clockwise from north |
+| `backlight` | Hold the backlight on, or drive it off |
 
 ### Shared constants (`hal.h`)
 
@@ -73,6 +74,8 @@ The RAM HAL stores one fix (`emu_hal_set_gps`). The emulator turns an east/north
 `heading` writes a `heading_sample_t`: `tilt_deg` off flat, `still` when the accelerometer reads about 1 g, `motor` while a vibe is in progress, and `heading_deg` clockwise from north (`0` = the top of the device points north). It returns false when there is no sample. Firmware (`heading_view`) hides the arrow above 20° of tilt, while moving, and while the motor is running, then waits 400 ms before drawing an 8-way arrow.
 
 The RAM HAL starts flat, still, and facing north (`emu_hal_set_heading`). A vibe stays `motor` until `now_ms` passes the duration. The Feather reads the LSM303AGR and returns false when the chip does not answer.
+
+`backlight(true)` enables the **D13** pull-up. `backlight(false)` drives **D13** low. The RAM HAL ignores it. The Feather applies it on the PN2222 that feeds the backlight.
 
 ---
 

@@ -78,4 +78,5 @@ typedef struct hal {
   bool (*gps_fix)(void *ctx, gps_fix_t *out);
   void (*gps_power)(void *ctx, bool on);
   bool (*heading)(void *ctx, heading_sample_t *out);
+  void (*backlight)(void *ctx, bool on);
 } hal_t;

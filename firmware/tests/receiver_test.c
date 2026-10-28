@@ -42,6 +42,24 @@ static void test_gps_sample(void) {
   pass("a stored fix is sent with its timestamp when the sky is gone");
 }
 
+static void test_cold_start_stays_on(void) {
+  unit_t a;
+  make_unit(&a, 1);
+  emu_hal_set_gps(&a.ram, NULL);
+  locate_gps_tick(&a.locate, &a.hal);
+  CHECK(a.ram.gps_on, "cold start powers the receiver");
+  a.ram.now_ms = GPS_LISTEN_MS;
+  locate_gps_tick(&a.locate, &a.hal);
+  CHECK(!a.locate.saved_fix, "no sentence yet");
+  CHECK(a.ram.gps_on, "EN stays high without a fix");
+  set_grid(&a, 10, 0);
+  locate_gps_tick(&a.locate, &a.hal);
+  locate_gps_tick(&a.locate, &a.hal);
+  CHECK(a.locate.saved_fix, "first fix is stored");
+  CHECK(!a.ram.gps_on, "a stored fix sleeps the receiver");
+  pass("a cold start leaves the receiver on until a fix");
+}
+
 static void test_capture_after_move(void) {
   unit_t a;
   make_unit(&a, 1);
@@ -71,6 +89,7 @@ static void test_capture_after_move(void) {
 
 int main(void) {
   test_gps_sample();
+  test_cold_start_stays_on();
   test_capture_after_move();
   if (g_fail) {
     printf("%d failed, %d passed\n", g_fail, g_pass);

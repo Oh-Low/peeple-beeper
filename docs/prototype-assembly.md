@@ -67,7 +67,7 @@ The radio's signal names (`GP10`, `3V3`, and so on) are Pico names. They are not
 | Radio chip select | **D10** | Radio `GP3` |
 | Radio busy | **D11** | Radio `GP2` |
 | Radio reset | **D12** | Radio `GP15` only |
-| Radio interrupt | **D13** | Radio `GP20` |
+| Backlight | **D13** | PN2222 base. The nRF pull-up holds the light on. |
 | Screen command/data | **A0** | Screen pin 10 `A0` |
 | Screen reset | **A1** | Screen pin 11 `/RST` |
 | Screen chip select | **A2** | Screen pin 12 `/CS` |
@@ -86,6 +86,8 @@ The radio's signal names (`GP10`, `3V3`, and so on) are Pico names. They are not
 Leave the Feather pins **USB**, **BAT**, **EN**, and **AREF** empty. **AREF** is an analog reference, not a spare button pin. The GPS **PPS** pin stays empty too. **D5** is the GPS enable, so the once-per-second pulse has nowhere to land. Time still comes from the GPS sentences while the receiver is on.
 
 **D12** is the radio reset, active low, and only the radio. The compass has no reset pin. The board port pulses **D12** once at boot, and again only when the radio has stopped answering. The code in this repository does not pulse that pin yet. Changing transmit power, or switching the radio between send and receive, must not pulse this wire. A pulse aborts whatever the radio was sending.
+
+**D13** is the backlight, and only the backlight. Radio `GP20` stays empty. The images ask the radio over its data wires when a packet has arrived, so they do not read that pulse. The pull-up inside the chip holds **D13** high, and that holds the light on. Driving **D13** low turns the light off. No resistor goes on this pin.
 
 Several names you may see in pin diagrams are not holes on the breadboard header. **D3** is the onboard red LED. **D4** is the onboard blue LED. **D7** is the small button already on the Feather. **D8** is the onboard color LED. **A6** is tied to the battery divider inside the board. Do not hunt for those holes.
 
@@ -153,7 +155,7 @@ The sockets have no GP names. Hold the board with the sockets facing you and the
  GP9                             GP22
  GND                             GND
  GP10   clock     SCK            GP21
- GP11   data out  MO             GP20      D13
+ GP11   data out  MO             GP20
  GP12   data in   MI             GP19
  GP13                            GP18
  GND                             GND
@@ -180,8 +182,7 @@ The antenna switch is already handled on the board, with the solder blob on **A*
 - [ ] `GP3` to Feather **D10**. This is chip select. The radio ignores the clock and data wires until this pin is low.
 - [ ] `GP2` to Feather **D11**. The SX1262 holds this high while it is too busy to take another command.
 - [ ] `GP15` to Feather **D12**. Reset, active low. Nothing else lands in this hole. Do not tie it to ground.
-- [ ] `GP20` to Feather **D13**. The radio pulses this when a packet arrives.
-- [ ] `GP22`, `GP26`, **VBUS**, **VSYS**, and **3V3_EN** have no wires.
+- [ ] `GP20`, `GP22`, `GP26`, **VBUS**, **VSYS**, and **3V3_EN** have no wires.
 
 Plug USB in. Black probe in a **GND** socket, red probe in the **3V3** socket (across from **GP3**). About 3.3 volts. The PWR LED on the radio should light, because that LED sits on this 3.3 volt pin. The CHG LED stays dark. That one belongs to the charger we are not using. Unplug USB.
 
@@ -197,7 +198,7 @@ Pins 1–4 belong to an optional font chip this build does not use. A wire on th
 | 2 | S0 | no wire |
 | 3 | SCLK (font chip) | no wire |
 | 4 | CS# (font chip) | no wire |
-| 5 | LEDA | red rail |
+| 5 | LEDA | PN2222 emitter |
 | 6 | VSS | blue rail |
 | 7 | VDD | red rail |
 | 8 | SCLK | an empty hole in the Feather **SCK** group, the group that already holds radio `GP10` |
@@ -208,11 +209,19 @@ Pins 1–4 belong to an optional font chip this build does not use. A wire on th
 
 The screen and the radio share **SCK** and **MO**. That is normal. Only one of them is listened to at a time, chosen by its own chip-select pin (**D10** for the radio, **A2** for the screen). The screen has nothing to say back, so it does not connect to **MI**. Leave the radio's wires where they are. You are adding the screen onto the same rows.
 
-Pin 5, **LEDA**, powers the backlight. The module is rated to take 3.3 volts there and draw about 50 to 60 milliamps. A Feather signal pin cannot supply that, so pin 5 goes to the red rail. Pin 7, **VDD**, is a different pin: it powers the display controller. That supply is also 3.3 volts, and its absolute maximum is 3.6 volts. The two pins are not tied together on the module, so each one gets its own wire to the red rail. Pin 6, **VSS**, is the ground for both.
+Pin 5, **LEDA**, powers the backlight. The module draws about 50 to 60 milliamps there. **D13** cannot supply that, so a PN2222 stands between the red rail and pin 5. The motor in section 7 uses a second one of the same part.
+
+Hold the flat face toward you with the legs pointing down. Left leg is the emitter, middle is the base, right is the collector. That order is for the PN2222 in the TO-92 package. If the bag is a different part number, stop and read its sheet. The order is not universal.
+
+The collector (right leg) goes to the red rail. The emitter (left leg) goes to pin 5. The base (middle leg) goes straight to Feather **D13**. No resistor. The pull-up inside the chip, about 13 kΩ, holds the base high, and that is what turns the light on. It feeds only a small current into the base, so the backlight runs dimmer than a wire from pin 5 to the red rail. Driving **D13** low turns the light off. Until an image turns that pull-up on, the base floats and the backlight stays dark.
+
+Pin 7, **VDD**, powers the display controller. That supply is also 3.3 volts, and its absolute maximum is 3.6 volts. It gets its own wire to the red rail. Pin 6, **VSS**, is the ground for the controller and for the backlight. Leave that wire on the blue rail. Lifting it turns the whole glass off.
 
 - [ ] Seat the screen header in the breadboard. Each pin owns that row. Jumper from a free hole in the row, not from the hole the pin already fills.
-- [ ] Wire the table. Pins 1, 2, 3, and 4 get no wire. If a second chip is soldered on the module, pin 4 goes to the red rail instead, so that chip stays off the shared data wires.
-- [ ] USB in. Black probe on pin 6, red probe on pin 7. About 3.3 volts. The glass should be lit, even if the picture is blank or speckled. A dark glass means pin 5 or pin 6 is in the wrong hole.
+- [ ] Seat the PN2222 with the flat face still toward you, so you do not swap left and right after you set it down.
+- [ ] Collector to the red rail. Emitter to screen pin 5. Base straight to Feather **D13**. No resistor on that pin.
+- [ ] Wire the rest of the table. Pins 1, 2, 3, and 4 get no wire. If a second chip is soldered on the module, pin 4 goes to the red rail instead, so that chip stays off the shared data wires.
+- [ ] USB in. Black probe on pin 6, red probe on pin 7. About 3.3 volts. The backlight stays dark. That is the right result. A dark picture is not a wiring fault yet.
 - [ ] If the module is too hot to touch, or the red rail falls under 3.0 volts, unplug. Pin 7 has likely landed on the Feather pin labeled **USB**.
 
 Unplug USB.
@@ -234,7 +243,7 @@ Leave USB unplugged. Meter on continuity. One probe on the blue rail, the other 
 
 ## 7. Vibration motor
 
-A Feather pin is a signal, not a power supply for a motor. This motor draws on the order of tens of milliamps. Connecting it straight to **A5** damages the pin. The PN2222 is a switch. A small current into the middle leg lets a larger current flow from the right leg to the left leg.
+A Feather pin is a signal, not a power supply for a motor. This motor draws on the order of tens of milliamps. Connecting it straight to **A5** damages the pin. The PN2222 is a switch, a second one of the part already used for the backlight. A small current into the middle leg lets a larger current flow from the right leg to the left leg.
 
 Hold the flat face toward you with the legs pointing down. Left leg is the **emitter**, middle is the **base**, right is the **collector**. That order is for the PN2222 in the TO-92 package. If the bag is a different part number, stop and read its sheet. The order is not universal.
 
@@ -354,14 +363,14 @@ Unplug the LiPo. Plug in only USB. These boxes stay empty unless the bad conditi
 - [ ] About 3.3 volts on the red rail, on the radio's **3V3** socket, and on screen pin 7.
 - [ ] Radio PWR LED lit. Radio CHG LED dark.
 - [ ] Antenna snap clicked on, whip screwed to the cable. Solder blob still on **A**. `GP22` still empty.
-- [ ] Screen glass lit, picture still blank or speckled.
+- [ ] Screen pin 7 at about 3.3 volts. Backlight still dark. No resistor on **D13**. The base of that PN2222 is the only wire on **D13**, and radio `GP20` is still empty.
 - [ ] Back button and knob switch beep on the continuity meter only while held. No pull-up resistor on **D6**, **D9**, **A3**, or **A4**.
 - [ ] GPS LED blinking when the antenna can see sky.
 - [ ] Motor still, piezo silent.
 - [ ] Compass powered from the red rail, **SDA** and **SCL** on those Feather pins, **CSA** and **CSM** empty, **D12** connected only to radio `GP15`, **PPS** still empty.
 - [ ] Adafruit LiPo in the Feather's white socket. Radio battery still in the bag.
 
-The pager image is `make beeper`, then `make flash-beeper` once `FTHR840BOOT` is mounted. The glass shows the menu. Add-contact transmits a short-range hello. Piezo and the motor stay undriven.
+The pager image is `make beeper`, then `make flash-beeper` once `FTHR840BOOT` is mounted. That image turns the **D13** pull-up on, so the backlight comes on. Settings, then BACKLIGHT, then a press, switches it to `off` and drives **D13** low. Another press turns it back on. The choice is kept. The glass shows the menu. Add-contact transmits a short-range hello. Piezo and the motor stay undriven.
 
 ## Wire test
 
@@ -374,12 +383,13 @@ make bringup
 make flash-bringup
 ```
 
-The red LED on the Feather blinks three times, then keeps pulsing. A fast blink that never settles means the chip faulted. The glass has a border and these lines:
+The red LED on the Feather blinks three times, then keeps pulsing. A fast blink that never settles means the chip faulted. This image turns the **D13** pull-up on, so the backlight comes on. The glass has a border and these lines:
 
 - `BRINGUP` is the title.
 - `D6 D9 A3 A4` sit at `1` while the switch is open and `0` while you hold it or pass a knob click. This image turns the internal pull-ups on. The knob also changes the glass voltage. The title shows that setting as `EV` and `R`. Turn until the picture is readable straight on. One direction lightens it.
 - `ACC 33 OK` and `MAG 40 OK` are the compass answering on I2C.
 - `RF 1424 OK` is the radio answering on SPI after one reset pulse on `D12`. It then becomes `T012 D012 R003 C000`. `T` is send attempts. `D` is sends the chip finished. `R` is good pings heard. `C` is pings that arrived with a bad CRC. A click on Back switches `T` to `LIS` and this board only listens. Click Back again and it sends.
+- Press the knob to open the GPS page. Press it again to return. The first line is `FIX A` or `FIX V`, the satellite count, and `H` for HDOP. A larger HDOP is a rougher fix. Below that are the latitude and longitude as the receiver sent them, then UTC. `ACC` and `MAG` are the three axes in the same counts the pager reads. About 16384 on one accel axis is 1 g, so a flat board reads near `+16384` or `-16384` on Z and near zero on X and Y. Turning the board moves the magnetometer counts. The end of the `MAG` line is the direction those axes face: `N`, `NE`, `E`, `SE`, `S`, `SW`, `W`, or `NW`. `N` means the chip's +X axis points north, then clockwise. That is magnetic north, the same cut the pager uses. `----` means that field has not arrived. `NMEA` is the byte count and the number of sentences. Back still switches the radio between sending and listen-only while this page is up.
 - The bottom line then reads `M5 S2 P1 WOK I-110 -040`. `M5` means the chip is listening (`M2` is standby, `M6` is sending). `S` is the command status: `S2` means a packet is waiting, `S5` means the command failed, and `S6` means transmit finished. `P1` means LoRa (`P0` is the other modem). `WOK` means a settings write could be read back (`WNO` means the write was ignored). `I` is the signal strength right now, then the strongest one seen, both in dBm. `----` means that reading has not happened. The radio's 32 MHz clock is a TCXO powered from its DIO3 pin.
 
 `--` means that part never answered. `NO` means it answered with a different id. A mirrored picture still means the screen is on the bus.

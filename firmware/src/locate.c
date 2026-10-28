@@ -348,6 +348,11 @@ static void gps_listen_begin(locate_radio_t *loc, const hal_t *hal, uint32_t now
 
 static void gps_listen_end(locate_radio_t *loc, const hal_t *hal, uint32_t now) {
   loc->gps_listening = false;
+  if (!loc->saved_fix) {
+    /* EN low resets a search that has not stored a fix. */
+    loc->gps_next_on = now;
+    return;
+  }
   gps_power(hal, false);
   loc->gps_next_on = now + GPS_SAMPLE_PERIOD_MS;
 }

@@ -27,6 +27,7 @@ static const Pin MI = {0, 15};
 static const Pin D10 = {0, 27};
 static const Pin D11 = {0, 6};
 static const Pin D12 = {0, 8};
+static const Pin D13 = {1, 9};
 static const Pin A0 = {0, 4};
 static const Pin A1 = {0, 5};
 static const Pin A2 = {0, 30};
@@ -69,6 +70,19 @@ static int inst_rssi;
 static int inst_seen;
 static int peak_rssi;
 static int peak_seen;
+static int gps_page;
+static int gps_status;
+static int gps_sats = -1;
+static char gps_time[12];
+static char gps_lat[16];
+static char gps_lon[16];
+static char gps_ns;
+static char gps_ew;
+static char gps_hdop[8];
+static int compass_on;
+static int compass_seen;
+static int acc_x, acc_y, acc_z;
+static int mag_x, mag_y, mag_z;
 static int acc_id = -1;
 static int mag_id = -1;
 static int radio_id = -1;
@@ -151,6 +165,22 @@ static void note_encoder(void) {
   }
 }
 
+static void note_page(void) {
+  static int down;
+  static int stable;
+  static uint32_t since;
+  int now_down = !pin_get(A3);
+  uint32_t now = REG(0xE0001004u);
+  if (now_down != down) {
+    down = now_down;
+    since = now;
+    return;
+  }
+  if ((now - since) < 20u * 1000u * CYCLES_PER_US || stable == down) return;
+  stable = down;
+  if (down) gps_page = !gps_page;
+}
+
 static void note_back(void) {
   static int down;
   static int stable;
@@ -173,12 +203,15 @@ static void note_buttons(void) {
   if (!pin_get(A3)) closed_bits |= 4u;
   if (!pin_get(A4)) closed_bits |= 8u;
   note_back();
+  note_page();
   note_encoder();
 }
 
 static int button_closed(Pin p, unsigned bit) {
   return !pin_get(p) || (closed_bits & bit);
 }
+
+static void gps_take_byte(uint8_t byte);
 
 static void gps_pump(void) {
   uint32_t n;
@@ -195,10 +228,7 @@ static void gps_pump(void) {
   REG(0x40002110u) = 0;
   (void)REG(0x40002110u);
   if (n > sizeof gps_buf) n = sizeof gps_buf;
-  for (i = 0; i < n; i++) {
-    gps_bytes++;
-    if (gps_buf[i] == '$') gps_dollars++;
-  }
+  for (i = 0; i < n; i++) gps_take_byte(gps_buf[i]);
   REG(0x40002534u) = (uint32_t)(uintptr_t)gps_buf;
   REG(0x40002538u) = sizeof gps_buf;
   REG(0x40002000u) = 1u;
@@ -268,6 +298,7 @@ static void gpio_init(void) {
   pullup(D9);
   pullup(A3);
   pullup(A4);
+  pullup(D13); /* Pull-up holds the backlight on. */
   od_release(SDA);
   od_release(SCL);
   drive(D5, 1); /* High runs the receiver. */
@@ -492,6 +523,67 @@ static int whoami(uint8_t addr, uint8_t reg) {
   value = i2c_read(0);
   i2c_stop();
   return value;
+}
+
+static int i2c_write_reg(uint8_t addr, uint8_t reg, uint8_t value) {
+  int ok;
+  i2c_start();
+  ok = i2c_write((uint8_t)(addr << 1)) && i2c_write(reg) && i2c_write(value);
+  i2c_stop();
+  return ok;
+}
+
+static int i2c_read_regs(uint8_t addr, uint8_t reg, uint8_t *dst, int n) {
+  int i;
+  i2c_start();
+  if (!i2c_write((uint8_t)(addr << 1)) || !i2c_write(reg)) {
+    i2c_stop();
+    return 0;
+  }
+  i2c_start();
+  if (!i2c_write((uint8_t)((addr << 1) | 1u))) {
+    i2c_stop();
+    return 0;
+  }
+  for (i = 0; i < n; i++) {
+    int got = i2c_read(i + 1 < n);
+    if (got < 0) {
+      i2c_stop();
+      return 0;
+    }
+    dst[i] = (uint8_t)got;
+  }
+  i2c_stop();
+  return 1;
+}
+
+/* ±2 g, high resolution. About 16384 counts is 1 g. */
+static void compass_start(void) {
+  if (compass_on || acc_id != ACC_ID || mag_id != MAG_ID) return;
+  if (!i2c_write_reg(ACC_ADDR, 0x20, 0x57)) return;
+  if (!i2c_write_reg(ACC_ADDR, 0x23, 0x88)) return;
+  if (!i2c_write_reg(MAG_ADDR, 0x60, 0x00)) return;
+  if (!i2c_write_reg(MAG_ADDR, 0x62, 0x10)) return;
+  compass_on = 1;
+}
+
+static int16_t le16(const uint8_t *p) {
+  return (int16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
+}
+
+static void compass_sample(void) {
+  uint8_t acc[6];
+  uint8_t mag[6];
+  if (!compass_on) return;
+  if (!i2c_read_regs(ACC_ADDR, 0x28 | 0x80, acc, 6)) return;
+  if (!i2c_read_regs(MAG_ADDR, 0x68 | 0x80, mag, 6)) return;
+  acc_x = le16(acc);
+  acc_y = le16(acc + 2);
+  acc_z = le16(acc + 4);
+  mag_x = le16(mag);
+  mag_y = le16(mag + 2);
+  mag_z = le16(mag + 4);
+  compass_seen = 1;
 }
 
 static int wait_busy(void) {
@@ -777,6 +869,8 @@ static void radio_service(void) {
 static void probe(void) {
   acc_id = whoami(ACC_ADDR, ACC_WHO);
   mag_id = whoami(MAG_ADDR, MAG_WHO);
+  compass_start();
+  compass_sample();
   if (radio_id < 0) radio_id = radio_sync();
   if (radio_id == SYNC_ID && !radio_ready) radio_ready = radio_up();
 }
@@ -853,6 +947,265 @@ static void chip_line(char *dst, const char *name, int id, int expect) {
   *p = 0;
 }
 
+static int nmea_field(const char *line, int index, char *buf, int cap) {
+  const char *p = line;
+  int n = 0;
+  if (*p == '$') p++;
+  while (*p && *p != '*') {
+    const char *start = p;
+    int len;
+    while (*p && *p != ',' && *p != '*') p++;
+    if (n == index) {
+      len = (int)(p - start);
+      if (len >= cap) len = cap - 1;
+      memcpy(buf, start, (unsigned)len);
+      buf[len] = 0;
+      return 1;
+    }
+    n++;
+    if (*p == ',') p++;
+  }
+  if (n == index && cap) {
+    buf[0] = 0;
+    return 1;
+  }
+  return 0;
+}
+
+static int nmea_kind(const char *type, const char *kind) {
+  int n = 0;
+  while (type[n]) n++;
+  if (n < 3) return 0;
+  return type[n - 3] == kind[0] && type[n - 2] == kind[1] && type[n - 1] == kind[2];
+}
+
+static int hex_nibble(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return -1;
+}
+
+static int nmea_checksum(const char *line) {
+  const char *p = line;
+  unsigned cs = 0;
+  int hi;
+  int lo;
+  if (*p == '$') p++;
+  for (; *p && *p != '*'; p++) cs ^= (unsigned char)*p;
+  if (*p != '*') return 1;
+  hi = hex_nibble(p[1]);
+  lo = hex_nibble(p[2]);
+  if (hi < 0 || lo < 0) return 0;
+  return cs == (unsigned)((hi << 4) | lo);
+}
+
+static void copy_field(char *dst, int cap, const char *src) {
+  int i = 0;
+  if (!src) src = "";
+  while (src[i] && i < cap - 1) {
+    dst[i] = src[i];
+    i++;
+  }
+  dst[i] = 0;
+}
+
+static void format_hms(const char *tim) {
+  if (tim[0] < '0' || tim[1] < '0' || tim[2] < '0' || tim[3] < '0' || tim[4] < '0' || tim[5] < '0') {
+    gps_time[0] = 0;
+    return;
+  }
+  gps_time[0] = tim[0];
+  gps_time[1] = tim[1];
+  gps_time[2] = ':';
+  gps_time[3] = tim[2];
+  gps_time[4] = tim[3];
+  gps_time[5] = ':';
+  gps_time[6] = tim[4];
+  gps_time[7] = tim[5];
+  gps_time[8] = 0;
+}
+
+static void take_position(const char *lat, const char *ns, const char *lon, const char *ew) {
+  if (lat[0]) {
+    copy_field(gps_lat, (int)sizeof gps_lat, lat);
+    gps_ns = ns[0];
+  }
+  if (lon[0]) {
+    copy_field(gps_lon, (int)sizeof gps_lon, lon);
+    gps_ew = ew[0];
+  }
+}
+
+static void gps_take_line(const char *line) {
+  char type[8];
+  char tim[16];
+  char lat[16];
+  char ns[4];
+  char lon[16];
+  char ew[4];
+  char extra[8];
+  if (!nmea_checksum(line)) return;
+  if (!nmea_field(line, 0, type, (int)sizeof type)) return;
+  if (nmea_kind(type, "RMC")) {
+    if (!nmea_field(line, 1, tim, (int)sizeof tim)) return;
+    if (!nmea_field(line, 2, extra, (int)sizeof extra)) return;
+    format_hms(tim);
+    gps_status = extra[0] == 'A' || extra[0] == 'V' ? extra[0] : 0;
+    if (nmea_field(line, 3, lat, (int)sizeof lat) && nmea_field(line, 4, ns, (int)sizeof ns) &&
+        nmea_field(line, 5, lon, (int)sizeof lon) && nmea_field(line, 6, ew, (int)sizeof ew)) {
+      take_position(lat, ns, lon, ew);
+    }
+    return;
+  }
+  if (!nmea_kind(type, "GGA")) return;
+  if (nmea_field(line, 1, tim, (int)sizeof tim) && !gps_time[0]) format_hms(tim);
+  if (nmea_field(line, 7, extra, (int)sizeof extra)) {
+    int sats = 0;
+    int i = 0;
+    while (extra[i] >= '0' && extra[i] <= '9') {
+      sats = sats * 10 + (extra[i] - '0');
+      i++;
+    }
+    if (i) gps_sats = sats;
+  }
+  if (nmea_field(line, 8, extra, (int)sizeof extra) && extra[0]) copy_field(gps_hdop, (int)sizeof gps_hdop, extra);
+  if (!gps_lat[0] && nmea_field(line, 2, lat, (int)sizeof lat) && nmea_field(line, 3, ns, (int)sizeof ns) &&
+      nmea_field(line, 4, lon, (int)sizeof lon) && nmea_field(line, 5, ew, (int)sizeof ew)) {
+    take_position(lat, ns, lon, ew);
+  }
+}
+
+static void gps_take_byte(uint8_t byte) {
+  static char line[96];
+  static int len;
+  static int skip;
+  gps_bytes++;
+  if (byte == '$') gps_dollars++;
+  if (byte == '\r') return;
+  if (byte == '\n') {
+    if (!skip && len > 0) {
+      line[len] = 0;
+      gps_take_line(line);
+    }
+    len = 0;
+    skip = 0;
+    return;
+  }
+  if (skip || len >= (int)sizeof line - 1) {
+    skip = 1;
+    return;
+  }
+  line[len++] = (char)byte;
+}
+
+static int atan2_deg(int y, int x) {
+  int neg = 0;
+  int angle;
+  int den;
+  if (x == 0 && y == 0) return 0;
+  if (y < 0) {
+    neg = 1;
+    y = -y;
+  }
+  if (x >= 0) {
+    den = x + y;
+    if (den == 0) den = 1;
+    angle = 45 - ((x - y) * 45) / den;
+  } else {
+    den = y - x;
+    if (den == 0) den = 1;
+    angle = 135 - ((x + y) * 45) / den;
+  }
+  if (angle < 0) angle = 0;
+  if (angle > 180) angle = 180;
+  return neg ? -angle : angle;
+}
+
+/* +X north, then clockwise: N NE E SE S SW W NW. */
+static const char *facing(int x, int y) {
+  static const char *name[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+  int deg = atan2_deg(y, x);
+  if (deg < 0) deg += 360;
+  return name[((deg + 22) / 45) & 7];
+}
+
+static char *sdec(char *dst, int value) {
+  unsigned mag;
+  if (value < 0) {
+    *dst++ = '-';
+    mag = (unsigned)(-value);
+  } else {
+    *dst++ = '+';
+    mag = (unsigned)value;
+  }
+  return dec_pad(dst, mag, 5);
+}
+
+static void axis_line(char *row, const char *name, int x, int y, int z) {
+  char *p = copy(row, name);
+  if (!compass_seen) {
+    p = copy(p, " ----");
+    *p = 0;
+    return;
+  }
+  p = copy(p, " ");
+  p = sdec(p, x);
+  p = copy(p, " ");
+  p = sdec(p, y);
+  p = copy(p, " ");
+  p = sdec(p, z);
+  *p = 0;
+}
+
+static void draw_gps(void) {
+  char row[32];
+  char *p;
+  p = copy(row, "FIX ");
+  *p++ = gps_status ? (char)gps_status : '-';
+  p = copy(p, " SAT ");
+  if (gps_sats < 0) p = copy(p, "--");
+  else p = dec_pad(p, (unsigned)gps_sats, 2);
+  p = copy(p, " H ");
+  p = copy(p, gps_hdop[0] ? gps_hdop : "----");
+  *p = 0;
+  text(4, 2, row);
+  p = copy(row, gps_lat[0] ? gps_lat : "----");
+  if (gps_ns) {
+    p = copy(p, " ");
+    *p++ = gps_ns;
+  }
+  *p = 0;
+  text(4, 10, row);
+  p = copy(row, gps_lon[0] ? gps_lon : "----");
+  if (gps_ew) {
+    p = copy(p, " ");
+    *p++ = gps_ew;
+  }
+  *p = 0;
+  text(4, 18, row);
+  p = copy(row, "UTC ");
+  p = copy(p, gps_time[0] ? gps_time : "----");
+  *p = 0;
+  text(4, 26, row);
+  axis_line(row, "ACC", acc_x, acc_y, acc_z);
+  text(4, 34, row);
+  axis_line(row, "MAG", mag_x, mag_y, mag_z);
+  if (compass_seen && (mag_x || mag_y)) {
+    p = row;
+    while (*p) p++;
+    *p++ = ' ';
+    p = copy(p, facing(mag_x, mag_y));
+    *p = 0;
+  }
+  text(4, 42, row);
+  p = copy(row, "NMEA ");
+  p = dec_pad(p, gps_bytes > 999999u ? 999999u : gps_bytes, 6);
+  p = copy(p, " $");
+  p = dec_pad(p, gps_dollars > 9999u ? 9999u : gps_dollars, 4);
+  *p = 0;
+  text(4, 50, row);
+}
+
 static void draw(void) {
   char row[32];
   char *p;
@@ -866,6 +1219,10 @@ static void draw(void) {
   for (y = 0; y < 64; y++) {
     px(0, y);
     px(127, y);
+  }
+  if (gps_page) {
+    draw_gps();
+    return;
   }
   p = copy(row, "BRINGUP EV");
   p = hex_byte(p, contrast);

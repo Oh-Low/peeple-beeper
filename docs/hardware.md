@@ -64,7 +64,7 @@ On the Feather, **D12** is the SX1262 **NRESET** and nothing else. `board.c` pul
 
 **Emulator.** The bench blits the buffer to a scaled 128×64 LCD. Pixel colors are a host FSTN approximation (dark on light), not a panel datasheet.
 
-The breadboard glass is the BuyDisplay ERM12864 with an ST7567. `board.c` uses bias `0xA2`, ratio `0x22`, and electronic volume `0x34`. That contrast reads straight on.
+The breadboard glass is the BuyDisplay ERM12864 with an ST7567. `board.c` uses bias `0xA2`, ratio `0x22`, and electronic volume `0x34`. That contrast reads straight on. The backlight switch is a PN2222 on **D13**. The internal pull-up holds the light on. Driving **D13** low turns it off. Settings stores that choice.
 
 ### Rotary encoder
 
@@ -112,7 +112,7 @@ The breadboard glass is the BuyDisplay ERM12864 with an ST7567. `board.c` uses b
 
 ### PA1616S GPS (Adafruit Ultimate GPS breakout)
 
-**Role.** On-demand locate. A paired beeper asks; this unit replies with the last fix it stored, plus the hour and minute that fix was taken. The screen shows distance and bearing, not a map. The receiver is not left on. About every **30 minutes** firmware drives **EN** high, listens up to **60 seconds** for one fix, stores it, and drives **EN** low again. The first listen starts at boot. No sky during a listen keeps the previous fix. The module’s 10 Hz rate is unused. The default 1 Hz NMEA stream is enough.
+**Role.** On-demand locate. A paired beeper asks; this unit replies with the last fix it stored, plus the hour and minute that fix was taken. The screen shows distance and bearing, not a map. **EN** stays high until a fix is stored. Driving it low before that resets the search, so the fix LED stays dark and a locate answers with no sky. After a fix, about every **30 minutes** firmware drives **EN** high, listens up to **60 seconds**, and drives **EN** low again. No sky during that later listen keeps the previous fix. The first listen starts at boot. The module’s 10 Hz rate is unused. The default 1 Hz NMEA stream is enough.
 
 **HAL hook.** `gps_power` is the **EN** pin. `gps_fix` returns a fix only while that pin is on, as signed arcminutes times 10,000, the same numbers an RMC sentence posts (`ddmm.mmmm` and `dddmm.mmmm`, N/S and E/W). The locate session does not parse NMEA. `firmware/src/nmea.c` accepts `$GPRMC` / `$GNRMC`. Status `A` is a fix. Status `V` is no sky. The Feather UART is UARTE0 at 9600 on **P0.24**, and each byte goes to `beeper_gps_push_byte`. **D5** follows `gps_power`. A legal time on a status-A RMC sets the wall clock kept beside the fix. The stored fix is in the NVM snapshot (store version 4), along with whether tracking is open or must ask.
 

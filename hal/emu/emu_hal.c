@@ -125,6 +125,11 @@ static void beep(void *ctx, uint16_t ms) {
   r->beep_ms = ms;
 }
 
+static void backlight_fn(void *ctx, bool on) {
+  (void)ctx;
+  (void)on;
+}
+
 static bool motor_running(const emu_hal_t *r) {
   return r->vibe_ms != 0 && (int32_t)(r->vibe_until - r->now_ms) > 0;
 }
@@ -185,6 +190,7 @@ void emu_hal_init(emu_hal_t *r, hal_t *out) {
   out->gps_fix = gps_fix_fn;
   out->gps_power = gps_power_fn;
   out->heading = heading_fn;
+  out->backlight = backlight_fn;
 }
 
 void emu_hal_push_encoder(emu_hal_t *r, encoder_event_t ev) {

@@ -11,7 +11,7 @@
 #define MAGIC1 0x42
 #define MAGIC2 0x30
 #define MAGIC3 0x31
-#define STORE_VERSION 8
+#define STORE_VERSION 9
 #define STATUS_SENDING 0
 #define STATUS_SENT 1
 #define STATUS_FAILED 2
@@ -201,6 +201,7 @@ static size_t encode_slice(beeper_t *b, const inbox_row_t *inbox, int inbox_n,
   if (!w_u8(&w, b->screen.show_clock_bat ? 1 : 0)) return (size_t)-1;
   if (!w_u8(&w, b->screen.dark_mode ? 1 : 0)) return (size_t)-1;
   if (!w_u8(&w, (uint8_t)b->screen.beeple)) return (size_t)-1;
+  if (!w_u8(&w, b->screen.backlight_on ? 1 : 0)) return (size_t)-1;
   return w.o;
 }
 
@@ -326,6 +327,8 @@ bool store_apply(beeper_t *b, const uint8_t *bytes, size_t len) {
   if (ver >= 6) dark_mode = r_u8(&r) != 0;
   int beeple = 0;
   if (ver >= 7) beeple = r_u8(&r);
+  bool backlight_on = true;
+  if (ver >= 9) backlight_on = r_u8(&r) != 0;
 
   if (!r.ok || r.o != r.len) return false;
 
@@ -355,6 +358,7 @@ bool store_apply(beeper_t *b, const uint8_t *bytes, size_t len) {
   b->locate.track_open = track_open;
   b->screen.show_clock_bat = show_clock_bat;
   b->screen.dark_mode = dark_mode;
+  b->screen.backlight_on = backlight_on;
   screen_set_beeple(&b->screen, beeple);
   return true;
 }
@@ -370,6 +374,7 @@ bool store_load(beeper_t *b, const hal_t *hal) {
   size_t n = hal->nvm_load(hal->ctx, store_buf, NVM_BYTES);
   if (n <= 0) return false;
   if (!store_apply(b, store_buf, n)) return false;
+  hal->backlight(hal->ctx, b->screen.backlight_on);
   store_remember_hash(b, store_buf, n);
   return true;
 }

@@ -20,6 +20,7 @@ static const Pin MI = {0, 15};
 static const Pin D10 = {0, 27};
 static const Pin D11 = {0, 6};
 static const Pin D12 = {0, 8};
+static const Pin D13 = {1, 9};
 static const Pin A0 = {0, 4};
 static const Pin A1 = {0, 5};
 static const Pin A2 = {0, 30};
@@ -92,6 +93,11 @@ static void drive(Pin p, int high) {
 }
 
 static void pullup(Pin p) { pin_cnf(p, CNF_IN_UP); }
+
+void board_backlight(bool on) {
+  if (on) pullup(D13);
+  else drive(D13, 0);
+}
 static void od_low(Pin p) {
   pin_clr(p);
   pin_cnf(p, CNF_OUT | CNF_OD);
@@ -227,9 +233,10 @@ static void gpio_init(void) {
   pullup(D9);
   pullup(A3);
   pullup(A4);
+  pullup(D13); /* Pull-up holds the backlight on. */
   od_release(SDA);
   od_release(SCL);
-  drive(D5, 0);
+  drive(D5, 1); /* High runs the receiver. */
   drive(LED_RED, 0);
   raw_a3 = stable_a3 = !pin_get(A3);
   raw_a4 = stable_a4 = !pin_get(A4);

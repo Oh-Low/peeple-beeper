@@ -96,6 +96,8 @@ typedef struct {
   bool show_clock_bat;
   /* Saved. Inverts the finished frame. */
   bool dark_mode;
+  /* Saved. Starts on. */
+  bool backlight_on;
   /* Saved. Index 0 is Voidfarer. */
   int beeple;
   /* Right 64×64 of a side menu. NULL leaves it blank. */
