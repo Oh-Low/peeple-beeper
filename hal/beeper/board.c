@@ -63,6 +63,7 @@ static uint32_t a3_since, a4_since;
 static int back_edge;
 
 static void board_sample(void);
+static void battery_note(void);
 static int rng_byte(void);
 
 void fault_blink(void) {
@@ -491,11 +492,16 @@ bool board_heading(heading_sample_t *out) {
   az = le16(acc + 4);
   mx = le16(mag);
   my = le16(mag + 2);
+  /* +X north −150 / south −400. +Y north +60 / south −150. */
+  mx += 275;
+  my += 45;
   horiz = isqrt((int64_t)ax * ax + (int64_t)ay * ay);
   tilt = atan2_deg(horiz, az < 0 ? -az : az);
   mag2 = (int64_t)ax * ax + (int64_t)ay * ay + (int64_t)az * az;
-  deg = atan2_deg(my, mx);
+  deg = atan2_deg(mx, my);
   if (deg < 0) deg += 360;
+  /* Aimed east, this angle sat about 21° south of east. */
+  deg = (deg + 360 - 21) % 360;
   out->tilt_deg = tilt;
   out->still = mag2 > (one_g * 85 / 100) * (one_g * 85 / 100) &&
                mag2 < (one_g * 115 / 100) * (one_g * 115 / 100);
@@ -811,7 +817,10 @@ void board_init(void) {
   gps_start();
 }
 
-void board_pump(void) { board_sample(); }
+void board_pump(void) {
+  board_sample();
+  battery_note();
+}
 
 encoder_event_t board_encoder_poll(void) {
   encoder_event_t ev;
@@ -901,32 +910,75 @@ static int cell_mv(void) {
   return raw * 3600 / 4096 * 2;
 }
 
-bool board_battery(battery_t *out) {
-  static battery_t last;
-  static uint32_t at;
-  static int have;
+static int trimmed_mv(const int *mv, int n) {
+  int tmp[30];
+  int i, drop, sum;
+  for (i = 0; i < n; i++) tmp[i] = mv[i];
+  for (i = 1; i < n; i++) {
+    int v = tmp[i];
+    int j = i;
+    while (j > 0 && tmp[j - 1] > v) {
+      tmp[j] = tmp[j - 1];
+      j--;
+    }
+    tmp[j] = v;
+  }
+  drop = n / 10;
+  sum = 0;
+  for (i = drop; i < n - drop; i++) sum += tmp[i];
+  return sum / (n - drop * 2);
+}
+
+static int mv_ring[30];
+static int mv_n;
+static int mv_head;
+static battery_t bat_last;
+static uint32_t bat_at;
+static int bat_tried;
+static int bat_have;
+static int bat_shown;
+static int bat_ratchet;
+
+static void battery_note(void) {
   int mv;
+  int avg;
+  int pct;
   uint32_t now;
   int usb;
-  if (!out) return false;
+  int charging;
   now = rtc_ms();
-  if (have && (uint32_t)(now - at) < 1000u) {
-    *out = last;
-    return true;
-  }
+  if (bat_tried && (uint32_t)(now - bat_at) < 1000u) return;
+  bat_at = now;
+  bat_tried = 1;
   mv = cell_mv();
-  if (mv < 0) return false;
-  memset(out, 0, sizeof *out);
-  if (mv >= 3000) out->pct = lipo_pct(mv);
-  usb = (REG(0x40000438u) & 1u) != 0;
-  if (usb && out->pct < 100 && mv >= 3000) {
-    out->charging = true;
-    out->minutes = (uint16_t)((100 - out->pct) * 36 / 10);
-    if (out->minutes == 0) out->minutes = 1;
+  if (mv < 0) return;
+  mv_ring[mv_head] = mv;
+  mv_head++;
+  if (mv_head >= 30) mv_head = 0;
+  if (mv_n < 30) mv_n++;
+  avg = trimmed_mv(mv_ring, mv_n);
+  pct = avg >= 3000 ? lipo_pct(avg) : 0;
+  usb = (REG(0x40000438u) & 1u) != 0 && avg >= 3000;
+  if (!bat_ratchet) {
+    bat_shown = pct;
+    bat_ratchet = mv_n >= 30;
+  } else if (usb ? pct > bat_shown : pct < bat_shown) {
+    bat_shown = pct;
   }
-  last = *out;
-  at = now;
-  have = 1;
+  charging = usb && bat_shown < 100;
+  memset(&bat_last, 0, sizeof bat_last);
+  bat_last.pct = (uint8_t)bat_shown;
+  if (charging) {
+    bat_last.charging = true;
+    bat_last.minutes = (uint16_t)((100 - bat_shown) * 36 / 10);
+    if (bat_last.minutes == 0) bat_last.minutes = 1;
+  }
+  bat_have = 1;
+}
+
+bool board_battery(battery_t *out) {
+  if (!out || !bat_have) return false;
+  *out = bat_last;
   return true;
 }
 

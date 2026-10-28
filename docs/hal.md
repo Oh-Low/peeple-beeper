@@ -78,7 +78,7 @@ The RAM HAL starts flat, still, and facing north (`emu_hal_set_heading`). A vibe
 
 `backlight(true)` enables the **D13** pull-up. `backlight(false)` drives **D13** low. The RAM HAL ignores it. The Feather applies it on the PN2222 that feeds the backlight.
 
-`battery` writes percent, whether USB power is present and the cell is still charging, and minutes until full at the 200 mA charge into the 1200 mAh pack. The RAM HAL returns 87 and not charging. The Feather reads half the cell voltage on **A6**.
+`battery` writes percent, whether USB power is present and the cell is still charging, and minutes until full at the 200 mA charge into the 1200 mAh pack. The RAM HAL returns 87 and not charging. The Feather reads **A6** once a second. A ring of 30 readings drops three from each end and averages the rest. Until the ring is full the percent tracks that average. After that it only falls, unless VBUS is set and the average is at least 3000 mV, in which case it only rises. Minutes are recomputed from that percent while it is charging.
 
 ---
 

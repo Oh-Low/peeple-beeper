@@ -1121,11 +1121,15 @@ static int atan2_deg(int y, int x) {
   return neg ? -angle : angle;
 }
 
-/* +X north, then clockwise: N NE E SE S SW W NW. */
+/* +X north reads about −150, south about −400. +Y north about +60, south about −150.
+   Aimed east sat about 21° south of due east. */
+enum { MAG_X_BIAS = -275, MAG_Y_BIAS = -45, HEADING_SHIFT = -21 };
+
 static const char *facing(int x, int y) {
   static const char *name[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
   int deg = atan2_deg(y, x);
   if (deg < 0) deg += 360;
+  deg = (deg + 360 + HEADING_SHIFT) % 360;
   return name[((deg + 22) / 45) & 7];
 }
 
@@ -1194,7 +1198,7 @@ static void draw_gps(void) {
     p = row;
     while (*p) p++;
     *p++ = ' ';
-    p = copy(p, facing(mag_x, mag_y));
+    p = copy(p, facing(mag_y - MAG_Y_BIAS, mag_x - MAG_X_BIAS));
     *p = 0;
   }
   text(4, 42, row);

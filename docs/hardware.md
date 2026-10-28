@@ -106,7 +106,7 @@ The breadboard glass is the BuyDisplay ERM12864 with an ST7567. `board.c` uses b
 
 **HAL hook.** `battery` fills a `battery_t`: `pct` from 0 to 100, `charging` while VBUS is present and the cell is below full, and `minutes` until full. `minutes` is 0 when `charging` is false.
 
-**Pins.** The Feather already divides the pack onto **A6** (`P0.29`) with two 100 kΩ resistors, so the pin sees half the cell. No extra wire. The pager reads that pin with the analog converter. Full scale at the pin is 3.6 V, then doubled. USB power is the VBUS bit in the power controller. The pack in the assembly guide is 1200 mAh, and the Feather charger is 200 mA, so the time is remaining capacity divided by that rate. The charger holds the cell above its rested voltage, so the percent reads high and the time runs short. The pager's own draw makes the real charge a bit slower still.
+**Pins.** The Feather already divides the pack onto **A6** (`P0.29`) with two 100 kΩ resistors, so the pin sees half the cell. No extra wire. The pager reads that pin once a second from its main loop. Full scale at the pin is 3.6 V, then doubled. A ring of 30 readings drops the lowest and highest tenth and averages the rest before the percent lookup. Until the ring is full the percent tracks that average. After that, on the pack the percent only falls. While the VBUS bit is set and the average is at least 3000 mV it only rises, and the minutes until full are recomputed from that percent. Below 3000 mV the reading is not a pack. USB power is the VBUS bit in the power controller. The pack in the assembly guide is 1200 mAh, and the Feather charger is 200 mA, so the time is remaining capacity divided by that rate. The charger holds the cell above its rested voltage, so the percent reads high and the time runs short. The pager's own draw makes the real charge a bit slower still.
 
 **Emulator.** The RAM HAL reports a constant **87** and never charging. No discharge model.
 
@@ -128,13 +128,13 @@ No PMTK command is sent. The module stays at its default 1 Hz stream.
 
 **Pins.** [Prototype assembly](prototype-assembly.md): **SDA** and **SCL** to the Feather pins of those names, **VIN** and **GND** to the 3.3 V rails. The compass pin labeled **3Vo** (regulator output beside **VIN**), plus **IA1**, **IA2**, **INTM**, **CSA**, and **CSM**, stay empty. **CSA** and **CSM** left open keep both sensors on I2C. The beep is on **D2**. **D12** is the radio reset only. The prototype part is the Adafruit LSM303AGR breakout. A later board uses the bare **LSM303AGRTR** in its 2×2 mm LGA-12, not this breakout.
 
-**Field.** The vibration motor is a permanent magnet. Sleeping it removes the current, not the magnet. The compass sits at the far end of the breadboard from the motor and the 915 MHz antenna. Calibrate with the motor stopped, the piezo silent, and the radio asleep. Ignore heading while the motor is running.
+**Field.** The vibration motor is a permanent magnet. Sleeping it removes the current, not the magnet. The compass sits at the far end of the breadboard from the motor and the 915 MHz antenna. On this breadboard +X reads about −150 facing north and about −400 facing south, and +Y reads about +60 facing north and about −150 facing south. The heading adds 275 to X and 45 to Y before the angle. Aimed east, that angle sat about 21° south of due east, so 21° is subtracted. Ignore heading while the motor is running.
 
 **Bus.** I2C. The Adafruit breakout answers at `0x19` (accelerometer) and `0x1E` (magnetometer). It is an ordinary I2C slave. The screen, buttons, radio SPI, and GPS UART are not on this bus. There is no compass reset pin. A stuck data line is a power cycle.
 
 **Emulator.** Each radio has **flat** / **tipped** (0° or 25°), **still** / **moving**, a **heading** in degrees (0° is north, **− / +** steps 15°, Shift steps 45°), and **sky** / **no sky**. Flat, still, heading 0°, and sky is the default, so the top of the LCD is north and a locate reply carries the grid fix. The heading label shows the 8-way bucket the arrow uses. **no sky** clears the live fix. **sample** starts a listen on the next tick instead of waiting 30 minutes. A listen with sky stores the grid and the clock; a listen with no sky keeps the previous store. A locate reply sends that store. The locate screen runs the same prompts as the board. The vibe timer counts as the motor running.
 
-`board.c` reads the LSM303AGR on I2C. A custom board must strap the accelerometer address the same way the breakout does (`0x19`) and fit the datasheet capacitor on **C1**. Heading `0` means the +X axis points north.
+`board.c` reads the LSM303AGR on I2C. A custom board must strap the accelerometer address the same way the breakout does (`0x19`) and fit the datasheet capacitor on **C1**.
 
 ### 100 KB NVM partition
 
