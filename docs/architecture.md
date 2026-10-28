@@ -44,7 +44,7 @@ Tick order, frame types, and crypto are in [firmware-app.md](firmware-app.md) an
 |------|------|
 | `hal/hal.h` | HAL contract (`hal_t` ops + `ctx`). Shared. Not an implementation. |
 | `hal/emu/` | RAM HAL for tests and the desktop emulator. |
-| `hal/beeper/` | Feather board HAL. `make beeper` links `board.c`. `make nrf-check` compiles the table without it. |
+| `hal/beeper/` | Feather board HAL. `make beeper` links `board.c`. `sx1262_setup.c` is the modem command list, also linked into `make bringup`. `make nrf-check` compiles the table without either. |
 | `firmware/include/beeper.h` | `beeper_init` / `tick` / `reset` / `debug_key`. |
 | `firmware/src/*.c` | Screen, message session, pair, locate, store, display, crypto, frames. |
 | `firmware/host/` | Desktop foot-grid and RSSI (`mesh.c`) only. Tests and the emulator. |
@@ -72,6 +72,7 @@ A change lands in the file that already owns that decision. When two files would
 
 | Decision | Owner | What stays outside |
 |----------|--------|-------------------|
+| SX1262 modem command list: 915 MHz, SF7, 125 kHz, 4/5, TCXO on DIO3 | `hal/beeper/sx1262_setup.c` | Pins, SPI, and the wire-test glass stay in their own images. A send passes its own payload length. |
 | Wire layout of every frame | `frames.c` | Sessions call encode and decode. |
 | SHA-256 session key, seal, ack tag, locate tag | `crypto.c` | Sessions pass bytes in. |
 | Attempt loop for a sealed send: nonce list, attempt count, next-send time, accept a reply only from that peer on a stored nonce while the send is in flight | `attempt.c`. A page is nine tries, ten seconds then a minute. A locate is four tries, two seconds apart. The screen asks the session whether the first wait has elapsed. | Text, mascot, fix, denial, and no-sky stay in the session that owns them. `message.c` and `locate.c` stay two files. |

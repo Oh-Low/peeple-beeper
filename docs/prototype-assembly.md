@@ -361,11 +361,11 @@ Unplug the LiPo. Plug in only USB. These boxes stay empty unless the bad conditi
 - [ ] Compass powered from the red rail, **SDA** and **SCL** on those Feather pins, **CSA** and **CSM** empty, **D12** connected only to radio `GP15`, **PPS** still empty.
 - [ ] Adafruit LiPo in the Feather's white socket. Radio battery still in the bag.
 
-The pager image is `make beeper`, then `make flash-beeper` once `FTHR840BOOT` is mounted. The glass shows the menu. A page send does not go on the air. Piezo and the motor stay undriven.
+The pager image is `make beeper`, then `make flash-beeper` once `FTHR840BOOT` is mounted. The glass shows the menu. Add-contact transmits a short-range hello. Piezo and the motor stay undriven.
 
 ## Wire test
 
-Piezo and motor stay for later. This test talks to the parts that are already wired and draws the result on the glass. It reads the radio. It does not transmit.
+Piezo and motor stay for later. This test talks to the parts that are already wired and draws the result on the glass. Once the radio answers, each board sends a short ping once a second at −9 dBm. The other board's glass counts those pings.
 
 The build needs `arm-none-eabi-gcc`. Double-tap reset until a drive named `FTHR840BOOT` appears, then:
 
@@ -379,8 +379,8 @@ The red LED on the Feather blinks three times, then keeps pulsing. A fast blink 
 - `BRINGUP` is the title.
 - `D6 D9 A3 A4` sit at `1` while the switch is open and `0` while you hold it or pass a knob click. This image turns the internal pull-ups on. The knob also changes the glass voltage. The title shows that setting as `EV` and `R`. Turn until the picture is readable straight on. One direction lightens it.
 - `ACC 33 OK` and `MAG 40 OK` are the compass answering on I2C.
-- `RF 1424 OK` is the radio answering on SPI after one reset pulse on `D12`.
-- `GPS` counts bytes and sentences that start with `$`. Sentences keep coming indoors. A fix still wants sky. `OK` appears after the first `$`.
+- `RF 1424 OK` is the radio answering on SPI after one reset pulse on `D12`. It then becomes `T012 D012 R003 C000`. `T` is send attempts. `D` is sends the chip finished. `R` is good pings heard. `C` is pings that arrived with a bad CRC. A click on Back switches `T` to `LIS` and this board only listens. Click Back again and it sends.
+- The bottom line then reads `M5 S2 P1 WOK I-110 -040`. `M5` means the chip is listening (`M2` is standby, `M6` is sending). `S` is the command status: `S2` means a packet is waiting, `S5` means the command failed, and `S6` means transmit finished. `P1` means LoRa (`P0` is the other modem). `WOK` means a settings write could be read back (`WNO` means the write was ignored). `I` is the signal strength right now, then the strongest one seen, both in dBm. `----` means that reading has not happened. The radio's 32 MHz clock is a TCXO powered from its DIO3 pin.
 
 `--` means that part never answered. `NO` means it answered with a different id. A mirrored picture still means the screen is on the bus.
 

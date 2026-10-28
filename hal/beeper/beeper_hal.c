@@ -65,8 +65,9 @@ static bool radio_whisper(void *ctx) {
 
 static void radio_send_raw(void *ctx, const uint8_t *bytes, size_t len) {
   (void)ctx;
-  (void)bytes;
-  (void)len;
+  if (!bytes || !len) return;
+  if (len > RAW_FRAME_MAX) len = RAW_FRAME_MAX;
+  board_radio_send(bytes, len, whisper);
 }
 
 static bool radio_poll_raw(void *ctx, raw_frame_t *out) {
@@ -189,6 +190,11 @@ __attribute__((weak)) bool board_heading(heading_sample_t *out) {
 __attribute__((weak)) bool board_radio_poll(raw_frame_t *out) {
   (void)out;
   return false;
+}
+__attribute__((weak)) void board_radio_send(const uint8_t *bytes, size_t len, bool whisper_on) {
+  (void)bytes;
+  (void)len;
+  (void)whisper_on;
 }
 __attribute__((weak)) size_t board_nvm_load(uint8_t *out, size_t max) {
   (void)out;

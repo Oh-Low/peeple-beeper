@@ -6,7 +6,7 @@ Peeple Beeper is aimed at a pocket pager: an **nRF52840-class MCU**, an **SX1262
 
 ## Device in one paragraph
 
-A beeper is a one-handed, low-bitrate messenger: short canned pages over LoRa, a tiny 1-bit screen, and a contact book that survives power-off. The MCU runs UI, crypto, and the app-layer air protocol; the SX1262 is a clear pipe for ≤128-byte frames, not Wi-Fi or BLE mesh. The LCD’s 1024-byte framebuffer is the HAL display contract. Encoder detents and a back edge drive menus; whisper (minimum TX on a real nRF) plus a **−45 dBm** pairing gate keep Add-contact local. The 100 KB NVM partition is a mailbox budget, not the whole nRF flash. The breadboard runs this firmware and receives; it does not transmit. The desktop bench is still host panes linked by a fake air interface.
+A beeper is a one-handed, low-bitrate messenger: short canned pages over LoRa, a tiny 1-bit screen, and a contact book that survives power-off. The MCU runs UI, crypto, and the app-layer air protocol; the SX1262 is a clear pipe for ≤128-byte frames, not Wi-Fi or BLE mesh. The LCD’s 1024-byte framebuffer is the HAL display contract. Encoder detents and a back edge drive menus; whisper (minimum TX on a real nRF) plus a **−45 dBm** pairing gate keep Add-contact local. The 100 KB NVM partition is a mailbox budget, not the whole nRF flash. The breadboard runs this firmware. Pairing transmits at −9 dBm. A page transmits at +14 dBm. The desktop bench is still host panes linked by a fake air interface.
 
 ---
 
@@ -50,11 +50,11 @@ The Feather image occupies flash `0x26000`–`0xDA000`. The store is the interna
 
 **Role.** Longer-range, low-bitrate pager mesh. Wi-Fi would need infrastructure and more power; BLE’s range and topology are the wrong fit for a neighborhood page flood. The app protocol (pairing, PAGE/ACK, crypto, relay) is independent of PHY: LoRa is a clear pipe. Max raw frame is **128 bytes** (`RAW_FRAME_MAX`). CAD/LBT and collision handling are not implemented.
 
-**HAL hook.** App air uses `radio_send_raw` / `radio_poll_raw` (copy on poll, empty send is a no-op). `radio_set_whisper` / `radio_whisper` are TX-power mode (see [Power and pairing](#power-and-pairing)). Pairing and encrypted paging both use that raw path.
+**HAL hook.** App air uses `radio_send_raw` / `radio_poll_raw` (copy on poll, a zero-length send does nothing). `radio_set_whisper` / `radio_whisper` are TX-power mode (see [Power and pairing](#power-and-pairing)). Pairing and encrypted paging both use that raw path.
 
 **Emulator.** [`firmware/host/mesh.c`](../firmware/host/mesh.c) fans each TX to other host radios. Units sit on the **east/north foot grid**. A hop exists only if the straight-line distance is under 100 ft (`RADIO_RANGE_FT`). RSSI is **−30 dBm** at 0 ft, falling **60 dB** linearly across that span; at 100 ft the link is silent. Firmware paging has **no RSSI gate**; the 100 ft cutoff is host-only. There are **no collisions, no CAD, no airtime model, no loopback**. Whisper is a bool and does not change emulator RSSI or range. Default bench radios sit at east 0 / 75 / 150, north 0, so A reaches C only through B.
 
-On the Feather, **D12** is the SX1262 **NRESET** and nothing else. `board.c` pulses it once at boot, then leaves it high. `radio_set_whisper` and `radio_send_raw` do not pulse it. Receive is configured for 915 MHz, SF9, 125 kHz, coding rate 4/5. `radio_send_raw` is still empty, so a page does not go on the air. Whisper is remembered for a later send. `page_radio_reset` only clears RAM. CAD/LBT is not implemented.
+On the Feather, **D12** is the SX1262 **NRESET** and nothing else. `board.c` pulses it once at boot, then leaves it high. `radio_set_whisper` and `radio_send_raw` do not pulse it. The module's 32 MHz clock is a TCXO powered from DIO3 at 1.8 V. The modem command list is `hal/beeper/sx1262_setup.c`, shared with the wire test: 915 MHz, SF7, 125 kHz, coding rate 4/5. `radio_send_raw` transmits that frame. Whisper uses −9 dBm. A page uses +14 dBm. `page_radio_reset` only clears RAM. CAD/LBT is not implemented.
 
 ### 128×64 1-bit FSTN LCD (ST7567-style)
 
@@ -162,7 +162,7 @@ Battery math, sleep current, and TX current vs whisper are not in the repo.
 
 ## What the board HAL must implement
 
-`hal/beeper/board.c` fills that table on the Feather: glass, knob, Back, RNG, the 100 KB store, RTC milliseconds, the RMC clock, GPS, heading, and radio receive. Whisper is stored and is not applied on the air, because send is empty. Beep, the vibe pin, and battery percent stay idle. **D12** is still reset-only.
+`hal/beeper/board.c` fills that table on the Feather: glass, knob, Back, RNG, the 100 KB store, RTC milliseconds, the RMC clock, GPS, heading, and the radio. Whisper transmits at −9 dBm, and a page at +14 dBm. Beep, the vibe pin, and battery percent stay idle. **D12** is still reset-only.
 
 Firmware stays the C in `firmware/src`. See [firmware app](firmware-app.md).
 

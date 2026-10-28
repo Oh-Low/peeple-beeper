@@ -1,6 +1,7 @@
 #include "board.h"
 
 #include "beeper_hal.h"
+#include "sx1262_setup.h"
 
 #include <string.h>
 
@@ -32,14 +33,9 @@ static const Pin RX = {0, 24};
 static const Pin D5 = {1, 8};
 static const Pin LED_RED = {1, 15};
 
-/* 915 MHz, SF9, 125 kHz, 4/5. */
 enum {
   LCD_RATIO = 0x22,
   LCD_EV = 0x34,
-  RF_HZ_WORD = 0x39300000u,
-  LORA_SF = 0x09,
-  LORA_BW = 0x04,
-  LORA_CR = 0x01,
   SYNC_REG = 0x0740,
   NVM_MAGIC = 0x50424E76u,
   PAGE = 4096u
@@ -65,6 +61,7 @@ static uint32_t a3_since, a4_since;
 static int back_edge;
 
 static void board_sample(void);
+static int rng_byte(void);
 
 void fault_blink(void) {
   REG(0x50000A00u + 15u * 4u) = 1u;
@@ -514,13 +511,19 @@ static void radio_begin(void) {
 
 static void radio_end(void) { pin_set(D10); }
 
+/* BUSY rises as late as 600 ns after NSS. A sooner read looks idle. */
+static int radio_written(void) {
+  radio_end();
+  delay_us(2);
+  return wait_busy(100000);
+}
+
 static int radio_write(const uint8_t *bytes, int n) {
   int i;
   if (!wait_busy(20000)) return 0;
   radio_begin();
   for (i = 0; i < n; i++) spi_byte(bytes[i]);
-  radio_end();
-  return 1;
+  return radio_written();
 }
 
 static int radio_read(uint8_t cmd, uint8_t *dst, int n) {
@@ -534,18 +537,10 @@ static int radio_read(uint8_t cmd, uint8_t *dst, int n) {
   return 1;
 }
 
-/* One low pulse on D12, then NRESET stays high. This image has no transmit command. */
+/* D12 is the SX1262 NRESET. */
 static void radio_init(void) {
   uint8_t sync[2];
-  uint8_t freq[5];
-  uint8_t mod[5];
-  uint8_t pkt[7];
-  uint8_t pa[5];
-  uint8_t txp[3];
-  uint8_t buf[5];
-  uint8_t irq[9];
   uint8_t rx[4];
-  uint32_t word = RF_HZ_WORD;
   if (!radio_released) {
     pin_clr(D12);
     delay_us(200);
@@ -553,67 +548,7 @@ static void radio_init(void) {
     radio_released = 1;
   }
   if (!wait_busy(100000)) return;
-  buf[0] = 0x80;
-  buf[1] = 0x00;
-  if (!radio_write(buf, 2)) return;
-  buf[0] = 0x96;
-  buf[1] = 0x00;
-  if (!radio_write(buf, 2)) return;
-  buf[0] = 0x9D;
-  buf[1] = 0x01;
-  if (!radio_write(buf, 2)) return;
-  buf[0] = 0x89;
-  buf[1] = 0x7F;
-  if (!radio_write(buf, 2)) return;
-  if (!wait_busy(20000)) return;
-  buf[0] = 0x8A;
-  buf[1] = 0x01;
-  if (!radio_write(buf, 2)) return;
-  freq[0] = 0x86;
-  freq[1] = (uint8_t)(word >> 24);
-  freq[2] = (uint8_t)(word >> 16);
-  freq[3] = (uint8_t)(word >> 8);
-  freq[4] = (uint8_t)word;
-  if (!radio_write(freq, 5)) return;
-  pa[0] = 0x95;
-  pa[1] = 0x04;
-  pa[2] = 0x07;
-  pa[3] = 0x00;
-  pa[4] = 0x01;
-  if (!radio_write(pa, 5)) return;
-  txp[0] = 0x8E;
-  txp[1] = 0xF7;
-  txp[2] = 0x04;
-  if (!radio_write(txp, 3)) return;
-  buf[0] = 0x8F;
-  buf[1] = 0x00;
-  buf[2] = 0x00;
-  if (!radio_write(buf, 3)) return;
-  mod[0] = 0x8B;
-  mod[1] = LORA_SF;
-  mod[2] = LORA_BW;
-  mod[3] = LORA_CR;
-  mod[4] = 0x00;
-  if (!radio_write(mod, 5)) return;
-  pkt[0] = 0x8C;
-  pkt[1] = 0x00;
-  pkt[2] = 0x08;
-  pkt[3] = 0x00;
-  pkt[4] = 0xFF;
-  pkt[5] = 0x01;
-  pkt[6] = 0x00;
-  if (!radio_write(pkt, 7)) return;
-  irq[0] = 0x08;
-  irq[1] = 0x02;
-  irq[2] = 0x42;
-  irq[3] = 0x00;
-  irq[4] = 0x00;
-  irq[5] = 0x00;
-  irq[6] = 0x00;
-  irq[7] = 0x00;
-  irq[8] = 0x00;
-  if (!radio_write(irq, 9)) return;
-  if (!wait_busy(20000)) return;
+  if (!sx1262_setup(radio_write)) return;
   radio_begin();
   spi_byte(0x1D);
   spi_byte((uint8_t)(SYNC_REG >> 8));
@@ -634,6 +569,71 @@ static void radio_init(void) {
 static void radio_listen(void) {
   uint8_t rx[4] = {0x82, 0xFF, 0xFF, 0xFF};
   radio_write(rx, 4);
+}
+
+void board_radio_send(const uint8_t *bytes, size_t len, bool whisper) {
+  uint8_t standby[2];
+  uint8_t txp[3];
+  uint8_t clear[3];
+  uint8_t tx[4];
+  uint8_t irq[2];
+  uint16_t flags;
+  uint32_t start;
+  int i;
+  if (!radio_ok || !bytes || len == 0) return;
+  if (len > RAW_FRAME_MAX) len = RAW_FRAME_MAX;
+  standby[0] = 0x80;
+  standby[1] = 0x00;
+  if (!radio_write(standby, 2)) {
+    radio_listen();
+    return;
+  }
+  txp[0] = 0x8E;
+  txp[1] = whisper ? 0xF7 : 14;
+  txp[2] = 0x04;
+  if (!radio_write(txp, 3)) {
+    radio_listen();
+    return;
+  }
+  if (!sx1262_packet_len(radio_write, (uint8_t)len)) {
+    sx1262_packet_len(radio_write, 0xFF);
+    radio_listen();
+    return;
+  }
+  radio_begin();
+  spi_byte(0x0E);
+  spi_byte(0x00);
+  for (i = 0; i < (int)len; i++) spi_byte(bytes[i]);
+  if (!radio_written()) {
+    sx1262_packet_len(radio_write, 0xFF);
+    radio_listen();
+    return;
+  }
+  clear[0] = 0x02;
+  clear[1] = 0xFF;
+  clear[2] = 0xFF;
+  radio_write(clear, 3);
+  tx[0] = 0x83;
+  tx[1] = 0x00;
+  tx[2] = 0x00;
+  tx[3] = 0x00;
+  if (!radio_write(tx, 4)) {
+    sx1262_packet_len(radio_write, 0xFF);
+    radio_listen();
+    return;
+  }
+  start = rtc_ms();
+  for (;;) {
+    board_sample();
+    if ((uint32_t)(rtc_ms() - start) > 1000u) break;
+    if (!radio_read(0x12, irq, 2)) continue;
+    flags = (uint16_t)(((uint16_t)irq[0] << 8) | irq[1]);
+    if (flags & 0x0001u) break;
+    if (flags & 0x0200u) break;
+  }
+  radio_write(clear, 3);
+  sx1262_packet_len(radio_write, 0xFF);
+  radio_listen();
 }
 
 bool board_radio_poll(raw_frame_t *out) {

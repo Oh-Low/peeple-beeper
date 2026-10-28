@@ -1,3 +1,5 @@
+#include "sx1262_setup.h"
+
 #include <stdint.h>
 
 #define REG(addr) (*(volatile uint32_t *)(uintptr_t)(addr))
@@ -50,7 +52,23 @@ static uint32_t gps_bytes;
 static uint32_t gps_dollars;
 static int gps_run;
 static int radio_released;
+static int radio_ready;
 static uint32_t radio_wait_us = 100000;
+static uint32_t tx_count;
+static uint32_t tx_done;
+static uint32_t rx_count;
+static uint32_t crc_count;
+static uint32_t next_beacon;
+static uint32_t last_radio;
+static int listen_only;
+static int chip_mode = -1;
+static int cmd_status = -1;
+static int packet_type = -1;
+static int write_ok;
+static int inst_rssi;
+static int inst_seen;
+static int peak_rssi;
+static int peak_seen;
 static int acc_id = -1;
 static int mag_id = -1;
 static int radio_id = -1;
@@ -133,11 +151,28 @@ static void note_encoder(void) {
   }
 }
 
+static void note_back(void) {
+  static int down;
+  static int stable;
+  static uint32_t since;
+  int now_down = !pin_get(A4);
+  uint32_t now = REG(0xE0001004u);
+  if (now_down != down) {
+    down = now_down;
+    since = now;
+    return;
+  }
+  if ((now - since) < 20u * 1000u * CYCLES_PER_US || stable == down) return;
+  stable = down;
+  if (down) listen_only = !listen_only;
+}
+
 static void note_buttons(void) {
   if (!pin_get(D6)) closed_bits |= 1u;
   if (!pin_get(D9)) closed_bits |= 2u;
   if (!pin_get(A3)) closed_bits |= 4u;
   if (!pin_get(A4)) closed_bits |= 8u;
+  note_back();
   note_encoder();
 }
 
@@ -473,7 +508,7 @@ static int wait_busy(void) {
   return 1;
 }
 
-/* One low pulse on D12, then NRESET stays high. This image never transmits. */
+/* D12 is the SX1262 NRESET. */
 static int radio_sync(void) {
   uint8_t hi;
   uint8_t lo;
@@ -496,10 +531,254 @@ static int radio_sync(void) {
   return (hi << 8) | lo;
 }
 
+static int wait_busy_us(uint32_t us) {
+  uint32_t start = REG(0xE0001004u);
+  while (pin_get(D11)) {
+    gps_pump();
+    if ((REG(0xE0001004u) - start) > us * CYCLES_PER_US) return 0;
+  }
+  return 1;
+}
+
+/* BUSY rises as late as 600 ns after NSS. A sooner read looks idle. */
+static int radio_write(const uint8_t *bytes, int n) {
+  int i;
+  if (!wait_busy_us(20000)) return 0;
+  pin_set(A2);
+  pin_clr(D10);
+  for (i = 0; i < n; i++) spi_byte(bytes[i]);
+  pin_set(D10);
+  delay_us(2);
+  return wait_busy_us(100000);
+}
+
+static int radio_read(uint8_t cmd, uint8_t *dst, int n) {
+  int i;
+  if (!wait_busy_us(20000)) return 0;
+  pin_set(A2);
+  pin_clr(D10);
+  spi_byte(cmd);
+  spi_byte(0x00);
+  for (i = 0; i < n; i++) dst[i] = spi_byte(0x00);
+  pin_set(D10);
+  return 1;
+}
+
+static void radio_listen(void) {
+  uint8_t rx[4];
+  rx[0] = 0x82;
+  rx[1] = 0xFF;
+  rx[2] = 0xFF;
+  rx[3] = 0xFF;
+  radio_write(rx, 4);
+}
+
+static void radio_prove(void);
+
+static int radio_up(void) {
+  if (!sx1262_setup(radio_write)) return 0;
+  radio_prove();
+  radio_listen();
+  next_beacon = REG(0xE0001004u) + (REG(0x10000060u) % 50u) * 20000u * CYCLES_PER_US;
+  return 1;
+}
+
+static void radio_ping(void) {
+  uint8_t standby[2];
+  uint8_t clear[3];
+  uint8_t tx[4];
+  uint8_t payload[4];
+  uint8_t irq[2];
+  uint16_t flags = 0;
+  uint32_t start;
+  int i;
+  standby[0] = 0x80;
+  standby[1] = 0x00;
+  if (!radio_write(standby, 2)) {
+    radio_listen();
+    return;
+  }
+  if (!sx1262_packet_len(radio_write, 4)) {
+    radio_listen();
+    return;
+  }
+  payload[0] = 0x50;
+  payload[1] = 0x42;
+  payload[2] = 0x01;
+  payload[3] = (uint8_t)tx_count;
+  pin_set(A2);
+  pin_clr(D10);
+  spi_byte(0x0E);
+  spi_byte(0x00);
+  for (i = 0; i < 4; i++) spi_byte(payload[i]);
+  pin_set(D10);
+  delay_us(2);
+  if (!wait_busy_us(100000)) {
+    sx1262_packet_len(radio_write, 0xFF);
+    radio_listen();
+    return;
+  }
+  clear[0] = 0x02;
+  clear[1] = 0xFF;
+  clear[2] = 0xFF;
+  radio_write(clear, 3);
+  tx[0] = 0x83;
+  tx[1] = 0x00;
+  tx[2] = 0x00;
+  tx[3] = 0x00;
+  if (!radio_write(tx, 4)) {
+    sx1262_packet_len(radio_write, 0xFF);
+    radio_listen();
+    return;
+  }
+  start = REG(0xE0001004u);
+  for (;;) {
+    gps_pump();
+    if ((REG(0xE0001004u) - start) > 1000u * 1000u * CYCLES_PER_US) break;
+    if (!radio_read(0x12, irq, 2)) continue;
+    flags = (uint16_t)(((uint16_t)irq[0] << 8) | irq[1]);
+    if (flags & 0x0001u) break;
+    if (flags & 0x0200u) break;
+  }
+  radio_write(clear, 3);
+  sx1262_packet_len(radio_write, 0xFF);
+  radio_listen();
+  tx_count++;
+  if (flags & 0x0001u) tx_done++;
+}
+
+static void radio_catch(void) {
+  uint8_t irq[2];
+  uint8_t stat[2];
+  uint8_t pkt[3];
+  uint8_t clear[3];
+  uint8_t buf[8];
+  uint16_t flags;
+  int n;
+  int i;
+  if (!radio_read(0x12, irq, 2)) return;
+  flags = (uint16_t)(((uint16_t)irq[0] << 8) | irq[1]);
+  if ((flags & 0x0242u) == 0) return;
+  clear[0] = 0x02;
+  clear[1] = 0xFF;
+  clear[2] = 0xFF;
+  if (flags & 0x0040u) {
+    crc_count++;
+    radio_write(clear, 3);
+    radio_listen();
+    return;
+  }
+  if ((flags & 0x0002u) == 0) {
+    radio_write(clear, 3);
+    radio_listen();
+    return;
+  }
+  if (!radio_read(0x13, stat, 2)) return;
+  n = stat[0];
+  if (n < 4 || n > 8) {
+    radio_write(clear, 3);
+    radio_listen();
+    return;
+  }
+  pin_set(A2);
+  pin_clr(D10);
+  spi_byte(0x1E);
+  spi_byte(stat[1]);
+  spi_byte(0x00);
+  for (i = 0; i < n; i++) buf[i] = spi_byte(0x00);
+  pin_set(D10);
+  if (!radio_read(0x14, pkt, 3)) {
+    radio_write(clear, 3);
+    radio_listen();
+    return;
+  }
+  radio_write(clear, 3);
+  radio_listen();
+  if (buf[0] != 0x50 || buf[1] != 0x42) return;
+  rx_count++;
+}
+
+static int reg_write(uint16_t addr, uint8_t val) {
+  uint8_t b[4];
+  b[0] = 0x0D;
+  b[1] = (uint8_t)(addr >> 8);
+  b[2] = (uint8_t)addr;
+  b[3] = val;
+  return radio_write(b, 4);
+}
+
+static int reg_read(uint16_t addr, uint8_t *val) {
+  if (!wait_busy_us(20000)) return 0;
+  pin_set(A2);
+  pin_clr(D10);
+  spi_byte(0x1D);
+  spi_byte((uint8_t)(addr >> 8));
+  spi_byte((uint8_t)addr);
+  spi_byte(0x00);
+  *val = spi_byte(0x00);
+  pin_set(D10);
+  return 1;
+}
+
+/* A value other than the reset sync word, so a readback proves the write landed. */
+static void radio_prove(void) {
+  uint8_t got = 0;
+  uint8_t kind = 0;
+  write_ok = 0;
+  if (reg_write(SYNC_REG, 0xAB) && reg_read(SYNC_REG, &got)) write_ok = got == 0xAB;
+  reg_write(SYNC_REG, 0x14);
+  if (!reg_read(SYNC_REG, &got) || got != 0x14) reg_write(SYNC_REG, 0x14);
+  if (radio_read(0x11, &kind, 1)) packet_type = kind;
+}
+
+static int radio_status_byte(void) {
+  uint8_t st;
+  if (!wait_busy_us(20000)) return -1;
+  pin_set(A2);
+  pin_clr(D10);
+  spi_byte(0xC0);
+  st = spi_byte(0x00);
+  pin_set(D10);
+  return st;
+}
+
+static void radio_sample(void) {
+  uint8_t b;
+  int st;
+  int rssi;
+  st = radio_status_byte();
+  if (st >= 0) {
+    chip_mode = (st >> 4) & 7;
+    cmd_status = (st >> 1) & 7;
+  }
+  if (radio_read(0x11, &b, 1)) packet_type = b;
+  if (chip_mode != 5 || !radio_read(0x15, &b, 1)) return;
+  rssi = -((int)b) / 2;
+  inst_rssi = rssi;
+  inst_seen = 1;
+  if (!peak_seen || rssi > peak_rssi) {
+    peak_rssi = rssi;
+    peak_seen = 1;
+  }
+}
+
+static void radio_service(void) {
+  uint32_t now;
+  if (!radio_ready) return;
+  radio_catch();
+  radio_sample();
+  if (listen_only) return;
+  now = REG(0xE0001004u);
+  if ((int32_t)(now - next_beacon) < 0) return;
+  next_beacon = now + 1000u * 1000u * CYCLES_PER_US;
+  radio_ping();
+}
+
 static void probe(void) {
   acc_id = whoami(ACC_ADDR, ACC_WHO);
   mag_id = whoami(MAG_ADDR, MAG_WHO);
-  radio_id = radio_sync();
+  if (radio_id < 0) radio_id = radio_sync();
+  if (radio_id == SYNC_ID && !radio_ready) radio_ready = radio_up();
 }
 
 static void gps_start(void) {
@@ -557,6 +836,12 @@ static char *dec_pad(char *dst, unsigned value, int width) {
   return dst;
 }
 
+static char *dbm(char *dst, int seen, int db) {
+  if (!seen) return copy(dst, "----");
+  *dst++ = '-';
+  return dec_pad(dst, (unsigned)(db < 0 ? -db : db), 3);
+}
+
 static void chip_line(char *dst, const char *name, int id, int expect) {
   char *p = copy(dst, name);
   p = copy(p, " ");
@@ -607,19 +892,53 @@ static void draw(void) {
   text(4, 26, row);
   chip_line(row, "MAG", mag_id, MAG_ID);
   text(4, 34, row);
-  p = copy(row, "RF ");
-  if (radio_id < 0) p = copy(p, "--");
-  else {
-    p = hex_word(p, (unsigned)radio_id);
-    p = copy(p, radio_id == SYNC_ID ? " OK" : " NO");
+  if (!radio_ready) {
+    p = copy(row, "RF ");
+    if (radio_id < 0) p = copy(p, "--");
+    else {
+      p = hex_word(p, (unsigned)radio_id);
+      p = copy(p, radio_id == SYNC_ID ? " OK" : " NO");
+    }
+  } else {
+    unsigned shown_tx = tx_count > 999u ? 999u : tx_count;
+    unsigned shown_done = tx_done > 999u ? 999u : tx_done;
+    unsigned shown_rx = rx_count > 999u ? 999u : rx_count;
+    unsigned shown_crc = crc_count > 999u ? 999u : crc_count;
+    if (listen_only) p = copy(row, "LIS");
+    else {
+      p = copy(row, "T");
+      p = dec_pad(p, shown_tx, 3);
+    }
+    p = copy(p, " D");
+    p = dec_pad(p, shown_done, 3);
+    p = copy(p, " R");
+    p = dec_pad(p, shown_rx, 3);
+    p = copy(p, " C");
+    p = dec_pad(p, shown_crc, 3);
   }
   *p = 0;
   text(4, 42, row);
-  p = copy(row, "GPS ");
-  p = dec_pad(p, gps_bytes, 6);
-  p = copy(p, " $");
-  p = dec_pad(p, gps_dollars, 4);
-  if (gps_dollars) p = copy(p, " OK");
+  if (!radio_ready) {
+    p = copy(row, "GPS ");
+    p = dec_pad(p, gps_bytes, 6);
+    p = copy(p, " $");
+    p = dec_pad(p, gps_dollars, 4);
+    if (gps_dollars) p = copy(p, " OK");
+  } else {
+    p = copy(row, "M");
+    if (chip_mode < 0) p = copy(p, "-");
+    else *p++ = (char)('0' + (chip_mode & 7));
+    p = copy(p, " S");
+    if (cmd_status < 0) p = copy(p, "-");
+    else *p++ = (char)('0' + (cmd_status & 7));
+    p = copy(p, " P");
+    if (packet_type < 0) p = copy(p, "-");
+    else *p++ = (char)('0' + (packet_type & 7));
+    p = copy(p, write_ok ? " WOK I" : " WNO I");
+    p = dbm(p, inst_seen, inst_rssi);
+    p = copy(p, " ");
+    p = dbm(p, peak_seen, peak_rssi);
+  }
   *p = 0;
   text(4, 50, row);
 }
@@ -644,6 +963,10 @@ int main(void) {
     while ((REG(0xE0001004u) - last) < 200u * 1000u * CYCLES_PER_US) {
       gps_pump();
       if (contrast_dirty) lcd_contrast();
+      if ((REG(0xE0001004u) - last_radio) >= 5000u * CYCLES_PER_US) {
+        last_radio = REG(0xE0001004u);
+        radio_service();
+      }
     }
     last = REG(0xE0001004u);
   }

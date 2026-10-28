@@ -48,7 +48,7 @@ BRINGUP_WARN := -std=c11 -Wall -Wextra -Werror -Os -ffreestanding -fno-builtin -
 BEEPER_CFLAGS := $(BRINGUP_CPU) -std=c11 -Wall -Wextra -Werror -Wno-sign-compare -Wno-format -Os \
   -ffunction-sections -fdata-sections -fno-unwind-tables \
   -Ifirmware/include -Ihal -Ihal/beeper
-BEEPER_OBJ := hal/beeper/main.c hal/beeper/board.c $(HAL_BEEPER_SRC) $(FW_CORE)
+BEEPER_OBJ := hal/beeper/main.c hal/beeper/board.c hal/beeper/sx1262_setup.c $(HAL_BEEPER_SRC) $(FW_CORE)
 
 .PHONY: all test emu run nrf-check arm-required bringup flash-bringup beeper flash-beeper clean
 
@@ -133,19 +133,20 @@ nrf-check: | $(BUILD)
 	  $(CC) $(CFLAGS) -Ihal/beeper -c $$f -o $(BUILD)/nrf/$$(basename $$f .c).o; \
 	done
 
-$(BUILD)/bringup.uf2: hal/beeper/start.S bringup/bringup.c bringup/feather.ld bringup/uf2.py | $(BUILD) arm-required
+$(BUILD)/bringup.uf2: hal/beeper/start.S bringup/bringup.c hal/beeper/sx1262_setup.c bringup/feather.ld bringup/uf2.py | $(BUILD) arm-required
 	mkdir -p $(BUILD)/bringup
 	$(ARM_GCC) $(BRINGUP_CPU) $(BRINGUP_WARN) -c hal/beeper/start.S -o $(BUILD)/bringup/start.o
-	$(ARM_GCC) $(BRINGUP_CPU) $(BRINGUP_WARN) -c bringup/bringup.c -o $(BUILD)/bringup/bringup.o
+	$(ARM_GCC) $(BRINGUP_CPU) $(BRINGUP_WARN) -Ihal/beeper -c bringup/bringup.c -o $(BUILD)/bringup/bringup.o
+	$(ARM_GCC) $(BRINGUP_CPU) $(BRINGUP_WARN) -Ihal/beeper -c hal/beeper/sx1262_setup.c -o $(BUILD)/bringup/sx1262_setup.o
 	$(ARM_GCC) $(BRINGUP_CPU) -ffreestanding -nostdlib -nostartfiles \
 	  -Wl,-T,bringup/feather.ld -Wl,-Map,$(BUILD)/bringup.map -Wl,--gc-sections \
-	  -o $(BUILD)/bringup.elf $(BUILD)/bringup/start.o $(BUILD)/bringup/bringup.o
+	  -o $(BUILD)/bringup.elf $(BUILD)/bringup/start.o $(BUILD)/bringup/bringup.o $(BUILD)/bringup/sx1262_setup.o
 	$(ARM_OBJCOPY) -O binary $(BUILD)/bringup.elf $(BUILD)/bringup.bin
 	python3 bringup/uf2.py $(BUILD)/bringup.bin $(BUILD)/bringup.uf2 0x26000
 
 bringup: $(BUILD)/bringup.uf2
 
-$(BUILD)/beeper.uf2: hal/beeper/start.S hal/beeper/main.c hal/beeper/board.c $(HAL_BEEPER_SRC) $(FW_CORE) hal/beeper/feather.ld bringup/uf2.py | $(BUILD) arm-required
+$(BUILD)/beeper.uf2: hal/beeper/start.S hal/beeper/main.c hal/beeper/board.c hal/beeper/sx1262_setup.c $(HAL_BEEPER_SRC) $(FW_CORE) hal/beeper/feather.ld bringup/uf2.py | $(BUILD) arm-required
 	mkdir -p $(BUILD)/beeper
 	$(ARM_GCC) $(BEEPER_CFLAGS) -c hal/beeper/start.S -o $(BUILD)/beeper/start.o
 	for f in $(BEEPER_OBJ); do \
