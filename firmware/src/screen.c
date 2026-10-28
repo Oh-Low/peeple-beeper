@@ -36,6 +36,7 @@ enum {
   SET_NAME,
   SET_TRACK,
   SET_CLOCK,
+  SET_TZ,
   SET_DARK,
   SET_LIGHT,
   SET_VIBE,
@@ -78,23 +79,26 @@ static void pad2(char *out, int n) {
   else snprintf(out, 8, "%d", n);
 }
 
-static int clamp_hour(int n) {
-  if (n < 0) return 0;
-  if (n > 23) return 23;
-  return n;
+static int wrap_hour(int hour) {
+  hour %= 24;
+  if (hour < 0) hour += 24;
+  return hour;
 }
 
-static int clamp_minute(int n) {
-  if (n < 0) return 0;
-  if (n > 59) return 59;
-  return n;
-}
-
-static void stamp_clock(const hal_t *hal, uint8_t *hh, uint8_t *mm) {
+static void local_hm(const screen_t *screen, const hal_t *hal, uint8_t *hh, uint8_t *mm) {
   uint8_t h = 0, m = 0;
   hal->clock(hal->ctx, &h, &m);
-  *hh = (uint8_t)clamp_hour(h);
-  *mm = (uint8_t)clamp_minute(m);
+  if (h > 23 || m > 59) {
+    *hh = CLOCK_NONE;
+    *mm = CLOCK_NONE;
+    return;
+  }
+  *hh = (uint8_t)wrap_hour((int)h + (int)screen->tz_hours);
+  *mm = m;
+}
+
+static void stamp_clock(const screen_t *screen, const hal_t *hal, uint8_t *hh, uint8_t *mm) {
+  local_hm(screen, hal, hh, mm);
 }
 
 static void format_hm(char *out, size_t cap, int hh, int mm) {
@@ -129,7 +133,7 @@ static void push_outbox(screen_t *screen, const uint8_t *dest_id, const char *to
   str_copy_max(row->to, sizeof row->to, to, PAGE_FROM_MAX);
   str_copy_max(row->body, sizeof row->body, body, PAGE_BODY_MAX);
   row->status = OUTBOX_SENDING;
-  stamp_clock(hal, &row->sent_hh, &row->sent_mm);
+  stamp_clock(screen, hal, &row->sent_hh, &row->sent_mm);
   row->acked_hh = CLOCK_NONE;
   row->acked_mm = CLOCK_NONE;
   screen->outbox_n++;
@@ -141,7 +145,7 @@ static void finish_outbox(screen_t *screen, outbox_status_t next, const hal_t *h
     if (row->status == OUTBOX_SENDING) {
       row->status = next;
       if (next == OUTBOX_SENT) {
-        stamp_clock(hal, &row->acked_hh, &row->acked_mm);
+        stamp_clock(screen, hal, &row->acked_hh, &row->acked_mm);
       }
       return;
     }
@@ -179,7 +183,7 @@ static void push_inbox(screen_t *screen, const page_t *p, const hal_t *hal) {
   str_copy_max(row->body, sizeof row->body, tmp.body, PAGE_BODY_MAX);
   row->rssi = tmp.rssi;
   row->received_ms = tmp.received_ms;
-  stamp_clock(hal, &row->received_hh, &row->received_mm);
+  stamp_clock(screen, hal, &row->received_hh, &row->received_mm);
   screen->inbox_n++;
 }
 
@@ -302,6 +306,13 @@ static void on_turn(screen_t *screen, int dir) {
     text_edit_turn(&screen->edit, dir);
     return;
   }
+  if (screen->mode == SCREEN_SETTINGS && screen->tz_edit) {
+    int h = (int)screen->tz_hours + dir;
+    if (h < -12) h = -12;
+    if (h > 14) h = 14;
+    screen->tz_hours = (int8_t)h;
+    return;
+  }
   screen->sel += dir;
   if (screen->mode == SCREEN_MENU) clamp_sel(screen, MENU_N);
   else if (screen->mode == SCREEN_PEEPLE) clamp_sel(screen, PEEP_N);
@@ -351,6 +362,10 @@ static void on_back(screen_t *screen, const hal_t *hal) {
     return;
   }
   if (screen->mode == SCREEN_SETTINGS) {
+    if (screen->tz_edit) {
+      screen->tz_edit = false;
+      return;
+    }
     stop_vibe_test(screen, hal);
     screen->mode = SCREEN_MENU;
     screen->sel = MENU_SETTINGS;
@@ -513,6 +528,7 @@ static void on_press(screen_t *screen, const hal_t *hal) {
   }
   if (screen->mode == SCREEN_SETTINGS) {
     if (screen->sel == SET_BACK) {
+      screen->tz_edit = false;
       stop_vibe_test(screen, hal);
       screen->mode = SCREEN_MENU;
       screen->sel = MENU_SETTINGS;
@@ -529,6 +545,10 @@ static void on_press(screen_t *screen, const hal_t *hal) {
     }
     if (screen->sel == SET_CLOCK) {
       screen->show_clock_bat = !screen->show_clock_bat;
+      return;
+    }
+    if (screen->sel == SET_TZ) {
+      screen->tz_edit = !screen->tz_edit;
       return;
     }
     if (screen->sel == SET_DARK) {
@@ -748,13 +768,23 @@ static void draw_slant_bar(uint8_t *buf, const char *title) {
   }
 }
 
-static void draw_slant_header(uint8_t *buf, const hal_t *hal, const char *title) {
+static void draw_slant_header(screen_t *screen, uint8_t *buf, const hal_t *hal, const char *title) {
   draw_slant_bar(buf, title);
   uint8_t hh = 0, mm = 0;
-  hal->clock(hal->ctx, &hh, &mm);
   char clock[8];
+  local_hm(screen, hal, &hh, &mm);
   format_hm(clock, sizeof clock, hh, mm);
   display_draw_text_small(buf, 107, 3, clock);
+}
+
+static void format_battery(char *out, size_t cap, const battery_t *b) {
+  if (b->charging && b->minutes >= 60) {
+    snprintf(out, cap, "%u%% %uh", (unsigned)b->pct, (unsigned)((b->minutes + 30) / 60));
+  } else if (b->charging && b->minutes > 0) {
+    snprintf(out, cap, "%u%% %um", (unsigned)b->pct, (unsigned)b->minutes);
+  } else {
+    snprintf(out, cap, "%u%%", (unsigned)b->pct);
+  }
 }
 
 static void draw_side_menu(screen_t *screen, const hal_t *hal, uint8_t *buf, char labels[][24], int n) {
@@ -762,13 +792,24 @@ static void draw_side_menu(screen_t *screen, const hal_t *hal, uint8_t *buf, cha
   int pitch = 10;
   if (screen->show_clock_bat) {
     uint8_t hh = 0, mm = 0;
-    hal->clock(hal->ctx, &hh, &mm);
     char clock[8];
+    local_hm(screen, hal, &hh, &mm);
     format_hm(clock, sizeof clock, hh, mm);
     display_draw_text(buf, 4, 1, clock);
-    char bat[8];
-    snprintf(bat, sizeof bat, "%u%%", (unsigned)hal->battery_pct(hal->ctx));
-    display_draw_text(buf, MENU_HALF - 2 - display_text_width(bat), 1, bat);
+    battery_t sample;
+    char bat[16];
+    int timed = 0;
+    if (!hal->battery(hal->ctx, &sample)) str_copy_max(bat, sizeof bat, "--", 2);
+    else {
+      timed = sample.charging && sample.minutes > 0;
+      format_battery(bat, sizeof bat, &sample);
+    }
+    if (timed) {
+      int w = display_text_width_small(bat);
+      display_draw_text_small(buf, MENU_HALF - 2 - w, 2, bat);
+    } else {
+      display_draw_text(buf, MENU_HALF - 2 - display_text_width(bat), 1, bat);
+    }
     y0 = 12;
     pitch = 8;
   }
@@ -841,7 +882,7 @@ static void draw_inbox(screen_t *screen, const hal_t *hal, uint8_t *buf) {
   const int time_x = 43;
   const int msg_x = 64;
   const int msg_end = 124;
-  draw_slant_header(buf, hal, "INBOX");
+  draw_slant_header(screen, buf, hal, "INBOX");
   for (int x = 1; x <= 90; x++) display_set_pixel(buf, x, 13, true);
   if (screen->inbox_n <= 0) {
     display_draw_text_small(buf, name_x, y0, "no pages");
@@ -875,7 +916,7 @@ static void draw_outbox(screen_t *screen, const hal_t *hal, uint8_t *buf) {
   const int status_x = 44;
   const int msg_x = 66;
   const int msg_end = 124;
-  draw_slant_header(buf, hal, "OUTBOX");
+  draw_slant_header(screen, buf, hal, "OUTBOX");
   for (int x = 1; x <= 90; x++) display_set_pixel(buf, x, 13, true);
   if (screen->outbox_n <= 0) {
     display_draw_text_small(buf, name_x, y0, "no pages");
@@ -1144,7 +1185,14 @@ static void draw_locread(screen_t *screen, const hal_t *hal, uint8_t *buf) {
   }
   if (view.when[0]) {
     char line[24];
-    snprintf(line, sizeof line, "Last Loc : %s", view.when);
+    char when[8];
+    str_copy_max(when, sizeof when, view.when, 5);
+    if (when[2] == ':' && when[0] >= '0' && when[0] <= '9' && when[1] >= '0' && when[1] <= '9') {
+      int hour = wrap_hour((when[0] - '0') * 10 + (when[1] - '0') + (int)screen->tz_hours);
+      when[0] = (char)('0' + hour / 10);
+      when[1] = (char)('0' + hour % 10);
+    }
+    snprintf(line, sizeof line, "Last Loc : %s", when);
     draw_center(buf, 54, line);
   }
 }
@@ -1158,7 +1206,7 @@ static void draw_compose_split(screen_t *screen, const hal_t *hal, uint8_t *buf,
   const int name_end = 42;
   const int msg_x = 56;
   const int msg_end = 124;
-  draw_slant_header(buf, hal, "COMPOSE");
+  draw_slant_header(screen, buf, hal, "COMPOSE");
   for (int x = 1; x <= 90; x++) display_set_pixel(buf, x, 13, true);
 
   int name_focus = messages ? compose_contact_sel(screen) : screen->sel;
@@ -1279,7 +1327,7 @@ static void name_for(screen_t *screen, const uint8_t *id, char *out, size_t n) {
 }
 
 static const char *SET_LABEL[SET_N] = {
-    "BACK", "NAME", "TRACKING", "CLOCK BAT", "DARK MODE", "BACKLIGHT", "VIBE TEST",
+    "BACK", "NAME", "TRACKING", "CLOCK BAT", "TIME ZONE", "DARK MODE", "BACKLIGHT", "VIBE TEST",
 };
 
 static void small_fit_left(char *dst, size_t cap, const char *src, int x0, int end_ink) {
@@ -1316,6 +1364,11 @@ static void settings_value(const screen_t *screen, int idx, char *out, size_t ca
   else if (idx == SET_TRACK)
     str_copy_max(out, cap, locate_is_open(screen->locate) ? "open" : "ask", 8);
   else if (idx == SET_CLOCK) str_copy_max(out, cap, screen->show_clock_bat ? "on" : "off", 4);
+  else if (idx == SET_TZ) {
+    if (screen->tz_hours > 0) snprintf(out, cap, "GMT+%d", (int)screen->tz_hours);
+    else if (screen->tz_hours < 0) snprintf(out, cap, "GMT%d", (int)screen->tz_hours);
+    else str_copy_max(out, cap, "GMT", 3);
+  }
   else if (idx == SET_DARK) str_copy_max(out, cap, screen->dark_mode ? "on" : "off", 4);
   else if (idx == SET_LIGHT) str_copy_max(out, cap, screen->backlight_on ? "on" : "off", 4);
   else if (idx == SET_VIBE) str_copy_max(out, cap, screen->vibe_test ? "on" : "off", 4);
@@ -1347,7 +1400,12 @@ static void draw_settings(screen_t *screen, const hal_t *hal, uint8_t *buf) {
       int span = display_text_width_small(value);
       display_draw_text_small(buf, SET_VALUE_END - (span - 1), y, value);
     }
-    if (idx == screen->sel) invert_cut_corner(buf, SET_BAR_X, y - 1, SET_BAR_W, SET_BAR_H);
+    if (idx == screen->sel && !(idx == SET_TZ && screen->tz_edit))
+      invert_cut_corner(buf, SET_BAR_X, y - 1, SET_BAR_W, SET_BAR_H);
+    if (idx == SET_TZ && screen->tz_edit && value[0]) {
+      int span = display_text_width_small(value);
+      display_invert_rect(buf, SET_VALUE_END - span, y - 1, span + 2, SET_BAR_H);
+    }
   }
   for (int y = DISPLAY_HEADER_H; y < DISPLAY_HEIGHT; y++) display_set_pixel(buf, SET_RULE_X, y, true);
 }
@@ -1454,7 +1512,9 @@ void screen_render(screen_t *screen, const hal_t *hal) {
   else if (screen->mode == SCREEN_TRACKASK) draw_track_ask(screen, hal, buf);
   else if (screen->mode == SCREEN_TRACKED) draw_tracked(screen, hal, buf);
   else if (screen->mode == SCREEN_NAMEEDIT || screen->mode == SCREEN_BODYEDIT) {
-    text_edit_draw(&screen->edit, hal, buf);
+    uint8_t hh = 0, mm = 0;
+    local_hm(screen, hal, &hh, &mm);
+    text_edit_draw(&screen->edit, buf, hh, mm);
   } else {
     draw_alert(screen, hal, buf);
   }

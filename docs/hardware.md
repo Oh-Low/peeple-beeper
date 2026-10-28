@@ -102,13 +102,13 @@ The breadboard glass is the BuyDisplay ERM12864 with an ST7567. `board.c` uses b
 
 ### Battery
 
-**Role.** Status line on the home menu (`battery_pct`).
+**Role.** Status line on the home menu. A percent, and while USB power is present a rough time until the cell is full.
 
-**HAL hook.** `battery_pct` → `uint8_t` percent.
+**HAL hook.** `battery` fills a `battery_t`: `pct` from 0 to 100, `charging` while VBUS is present and the cell is below full, and `minutes` until full. `minutes` is 0 when `charging` is false.
 
-**Emulator.** The RAM HAL reports a constant **87**. No discharge model, no USB, no fuel gauge.
+**Pins.** The Feather already divides the pack onto **A6** (`P0.29`) with two 100 kΩ resistors, so the pin sees half the cell. No extra wire. The pager reads that pin with the analog converter. Full scale at the pin is 3.6 V, then doubled. USB power is the VBUS bit in the power controller. The pack in the assembly guide is 1200 mAh, and the Feather charger is 200 mA, so the time is remaining capacity divided by that rate. The charger holds the cell above its rested voltage, so the percent reads high and the time runs short. The pager's own draw makes the real charge a bit slower still.
 
-**TBD.** Cell chemistry, capacity, charger, and ADC/fuel-gauge path.
+**Emulator.** The RAM HAL reports a constant **87** and never charging. No discharge model.
 
 ### PA1616S GPS (Adafruit Ultimate GPS breakout)
 
@@ -162,7 +162,7 @@ Battery math, sleep current, and TX current vs whisper are not in the repo.
 
 ## What the board HAL must implement
 
-`hal/beeper/board.c` fills that table on the Feather: glass, knob, Back, RNG, the 100 KB store, RTC milliseconds, the RMC clock, GPS, heading, and the radio. Whisper transmits at −9 dBm, and a page at +14 dBm. Beep, the vibe pin, and battery percent stay idle. **D12** is still reset-only.
+`hal/beeper/board.c` fills that table on the Feather: glass, knob, Back, RNG, the 100 KB store, RTC milliseconds, the RMC clock, GPS, heading, the battery divider, and the radio. Whisper transmits at −9 dBm, and a page at +14 dBm. Beep and the vibe pin stay idle. **D12** is still reset-only.
 
 Firmware stays the C in `firmware/src`. See [firmware app](firmware-app.md).
 

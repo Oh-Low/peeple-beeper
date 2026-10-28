@@ -55,6 +55,14 @@ typedef struct {
   int heading_deg;
 } heading_sample_t;
 
+/* pct is 0–100. charging is USB power with the cell still below full.
+   minutes is the estimate until full, and 0 when charging is false. */
+typedef struct {
+  uint8_t pct;
+  bool charging;
+  uint16_t minutes;
+} battery_t;
+
 typedef struct hal {
   void *ctx;
   void (*display_clear)(void *ctx);
@@ -72,7 +80,7 @@ typedef struct hal {
   bool (*nvm_save)(void *ctx, const uint8_t *bytes, size_t len);
   uint32_t (*now_ms)(void *ctx);
   void (*clock)(void *ctx, uint8_t *hh, uint8_t *mm);
-  uint8_t (*battery_pct)(void *ctx);
+  bool (*battery)(void *ctx, battery_t *out);
   void (*vibe)(void *ctx, uint16_t ms);
   void (*beep)(void *ctx, uint16_t ms);
   bool (*gps_fix)(void *ctx, gps_fix_t *out);

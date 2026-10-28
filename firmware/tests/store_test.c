@@ -122,6 +122,7 @@ static void test_roundtrip(void) {
   a.screen.show_clock_bat = false;
   a.screen.dark_mode = true;
   a.screen.backlight_on = false;
+  a.screen.tz_hours = -4;
   a.screen.beeple = 3;
   CHECK(store_save(&a, &hal), "save");
 
@@ -161,6 +162,7 @@ static void test_roundtrip(void) {
   CHECK(!b.screen.show_clock_bat, "clock hidden is saved");
   CHECK(b.screen.dark_mode, "dark mode is saved");
   CHECK(!b.screen.backlight_on, "backlight off is saved");
+  CHECK_EQ(b.screen.tz_hours, -4, "time zone is saved");
   CHECK_EQ(b.screen.beeple, 3, "beeple is saved");
   CHECK(b.screen.menu_art_w == 64, "beeple art applied");
   pass("store roundtrip: node_id, name, contacts, canned, inbox, outbox");

@@ -33,6 +33,7 @@ static const Pin SCL = {0, 11};
 static const Pin RX = {0, 24};
 static const Pin D5 = {1, 8};
 static const Pin LED_RED = {1, 15};
+static const Pin A6 = {0, 29};
 
 enum {
   LCD_RATIO = 0x22,
@@ -238,6 +239,7 @@ static void gpio_init(void) {
   od_release(SCL);
   drive(D5, 1); /* High runs the receiver. */
   drive(LED_RED, 0);
+  pin_cnf(A6, 1u << 1); /* Divider output. The digital buffer stays off. */
   raw_a3 = stable_a3 = !pin_get(A3);
   raw_a4 = stable_a4 = !pin_get(A4);
   a3_since = a4_since = rtc_ms();
@@ -828,6 +830,104 @@ bool board_back_poll(void) {
 void board_random_fill(uint8_t *buf, size_t len) {
   size_t i;
   for (i = 0; i < len; i++) buf[i] = (uint8_t)rng_byte();
+}
+
+/* P0.29 is half the cell. 1200 mAh pack, 200 mA charge. */
+static uint8_t lipo_pct(int mv) {
+  static const int v[] = {3400, 3650, 3730, 3770, 3790, 3800, 3820, 3870, 3920, 4000, 4110, 4150, 4200};
+  static const int p[] = {0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100};
+  int i;
+  if (mv <= v[0]) return 0;
+  if (mv >= v[12]) return 100;
+  for (i = 0; i < 12; i++) {
+    if (mv <= v[i + 1]) {
+      int span = v[i + 1] - v[i];
+      return (uint8_t)(p[i] + (mv - v[i]) * (p[i + 1] - p[i]) / span);
+    }
+  }
+  return 100;
+}
+
+static int wait_reg(volatile uint32_t *event, uint32_t us) {
+  uint32_t start = cycles();
+  while (!*event) {
+    if ((cycles() - start) > us * 64u) return 0;
+  }
+  return 1;
+}
+
+static int cell_mv(void) {
+  static volatile int16_t sample;
+  static int calibrated;
+  int raw;
+  REG(0x40007500u) = 1u;
+  REG(0x40007510u) = 6u;
+  REG(0x40007514u) = 0u;
+  REG(0x40007518u) = 5u << 16;
+  REG(0x400075F0u) = 2u;
+  REG(0x4000762Cu) = (uint32_t)(uintptr_t)&sample;
+  REG(0x40007630u) = 1u;
+  if (!calibrated) {
+    REG(0x40007110u) = 0u;
+    REG(0x4000700Cu) = 1u;
+    if (!wait_reg((volatile uint32_t *)0x40007110u, 10000u)) {
+      REG(0x40007500u) = 0u;
+      return -1;
+    }
+    calibrated = 1;
+  }
+  REG(0x40007100u) = 0u;
+  REG(0x40007000u) = 1u;
+  if (!wait_reg((volatile uint32_t *)0x40007100u, 1000u)) {
+    REG(0x40007500u) = 0u;
+    return -1;
+  }
+  REG(0x40007104u) = 0u;
+  REG(0x40007004u) = 1u;
+  if (!wait_reg((volatile uint32_t *)0x40007104u, 1000u)) {
+    REG(0x40007114u) = 0u;
+    REG(0x40007008u) = 1u;
+    wait_reg((volatile uint32_t *)0x40007114u, 1000u);
+    REG(0x40007500u) = 0u;
+    return -1;
+  }
+  dsb();
+  raw = sample;
+  REG(0x40007114u) = 0u;
+  REG(0x40007008u) = 1u;
+  wait_reg((volatile uint32_t *)0x40007114u, 1000u);
+  REG(0x40007500u) = 0u;
+  if (raw < 0) raw = 0;
+  return raw * 3600 / 4096 * 2;
+}
+
+bool board_battery(battery_t *out) {
+  static battery_t last;
+  static uint32_t at;
+  static int have;
+  int mv;
+  uint32_t now;
+  int usb;
+  if (!out) return false;
+  now = rtc_ms();
+  if (have && (uint32_t)(now - at) < 1000u) {
+    *out = last;
+    return true;
+  }
+  mv = cell_mv();
+  if (mv < 0) return false;
+  memset(out, 0, sizeof *out);
+  if (mv >= 3000) out->pct = lipo_pct(mv);
+  usb = (REG(0x40000438u) & 1u) != 0;
+  if (usb && out->pct < 100 && mv >= 3000) {
+    out->charging = true;
+    out->minutes = (uint16_t)((100 - out->pct) * 36 / 10);
+    if (out->minutes == 0) out->minutes = 1;
+  }
+  last = *out;
+  at = now;
+  have = 1;
+  return true;
 }
 
 uint32_t board_now_ms(void) {

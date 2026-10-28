@@ -35,4 +35,4 @@ void text_edit_draft(const text_edit_t *edit, char *out, size_t cap);
 void text_edit_turn(text_edit_t *edit, int dir);
 text_edit_press_t text_edit_press(text_edit_t *edit);
 bool text_edit_handle_text(text_edit_t *edit, const char *key);
-void text_edit_draw(text_edit_t *edit, const hal_t *hal, uint8_t *buf);
+void text_edit_draw(text_edit_t *edit, uint8_t *buf, uint8_t hh, uint8_t mm);

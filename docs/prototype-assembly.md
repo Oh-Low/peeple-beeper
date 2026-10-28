@@ -89,7 +89,7 @@ Leave the Feather pins **USB**, **BAT**, **EN**, and **AREF** empty. **AREF** is
 
 **D13** is the backlight, and only the backlight. Radio `GP20` stays empty. The images ask the radio over its data wires when a packet has arrived, so they do not read that pulse. The pull-up inside the chip holds **D13** high, and that holds the light on. Driving **D13** low turns the light off. No resistor goes on this pin.
 
-Several names you may see in pin diagrams are not holes on the breadboard header. **D3** is the onboard red LED. **D4** is the onboard blue LED. **D7** is the small button already on the Feather. **D8** is the onboard color LED. **A6** is tied to the battery divider inside the board. Do not hunt for those holes.
+Several names you may see in pin diagrams are not holes on the breadboard header. **D3** is the onboard red LED. **D4** is the onboard blue LED. **D7** is the small button already on the Feather. **D8** is the onboard color LED. **A6** is tied to the battery divider inside the board. The pager reads it for the menu percent. Do not hunt for those holes.
 
 Do not wire radio `GP22`. Find the three pads marked **A** and **B** on the radio. A solder blob should already join the middle pad to **A**. That factory blob lets the SX1262's own DIO2 pin steer the antenna switch. **B** would hand that switch to `GP22`. Leave the blob on **A**, and leave `GP22` empty. Do not move any other solder blob on the radio.
 

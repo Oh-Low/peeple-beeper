@@ -204,7 +204,7 @@ static void invert_slant_bar(uint8_t *buf, int x, int y, int w, int h, int cut_l
   }
 }
 
-static void draw_edit_header(uint8_t *buf, const hal_t *hal) {
+static void draw_edit_header(uint8_t *buf, uint8_t hh, uint8_t mm) {
   invert_slant_bar(buf, 0, 1, 64, 9, 6, 8);
   for (int k = 0; k < 3; k++) {
     for (int yy = 0; yy <= 7 - k; yy++) {
@@ -212,13 +212,10 @@ static void draw_edit_header(uint8_t *buf, const hal_t *hal) {
       for (int dx = 0; dx < 3; dx++) display_set_pixel(buf, sx + dx, 1 + yy, true);
     }
   }
-  if (hal && hal->clock) {
-    uint8_t hh = 0, mm = 0;
-    hal->clock(hal->ctx, &hh, &mm);
-    char clock[8];
-    snprintf(clock, sizeof clock, "%02u:%02u", (unsigned)hh, (unsigned)mm);
-    display_draw_text_small(buf, 107, 3, clock);
-  }
+  char clock[8];
+  if (hh > 23 || mm > 59) str_copy_max(clock, sizeof clock, "--:--", 5);
+  else snprintf(clock, sizeof clock, "%02u:%02u", (unsigned)hh, (unsigned)mm);
+  display_draw_text_small(buf, 107, 3, clock);
 }
 
 static void draw_draft_row(uint8_t *buf, const char *draft, int caret) {
@@ -243,9 +240,9 @@ static void draw_draft_row(uint8_t *buf, const char *draft, int caret) {
   if (cx <= end_ink - 2) display_invert_rect(buf, cx, 17, 3, FONT_SMALL_H);
 }
 
-void text_edit_draw(text_edit_t *edit, const hal_t *hal, uint8_t *buf) {
+void text_edit_draw(text_edit_t *edit, uint8_t *buf, uint8_t hh, uint8_t mm) {
   clamp_caret(edit);
-  draw_edit_header(buf, hal);
+  draw_edit_header(buf, hh, mm);
   for (int x = 1; x <= 90; x++) display_set_pixel(buf, x, 13, true);
   draw_draft_row(buf, edit->draft, edit->caret);
   for (int x = 1; x <= 90; x++) display_set_pixel(buf, x, 25, true);

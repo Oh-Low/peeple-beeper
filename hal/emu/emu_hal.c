@@ -109,9 +109,12 @@ static void clock_fn(void *ctx, uint8_t *hh, uint8_t *mm) {
   if (mm) *mm = r->mm;
 }
 
-static uint8_t battery_pct(void *ctx) {
+static bool battery_fn(void *ctx, battery_t *out) {
   emu_hal_t *r = ctx;
-  return r->battery;
+  if (!out) return false;
+  memset(out, 0, sizeof *out);
+  out->pct = r->battery;
+  return true;
 }
 
 static void vibe(void *ctx, uint16_t ms) {
@@ -184,7 +187,7 @@ void emu_hal_init(emu_hal_t *r, hal_t *out) {
   out->nvm_save = nvm_save;
   out->now_ms = now_ms;
   out->clock = clock_fn;
-  out->battery_pct = battery_pct;
+  out->battery = battery_fn;
   out->vibe = vibe;
   out->beep = beep;
   out->gps_fix = gps_fix_fn;

@@ -96,9 +96,9 @@ static void clock_fn(void *ctx, uint8_t *hh, uint8_t *mm) {
   if (mm) *mm = clock_mm;
 }
 
-static uint8_t battery_pct(void *ctx) {
+static bool battery_fn(void *ctx, battery_t *out) {
   (void)ctx;
-  return 0;
+  return board_battery(out);
 }
 
 static void vibe(void *ctx, uint16_t ms) {
@@ -150,8 +150,8 @@ void beeper_hal_init(hal_t *out) {
   whisper = false;
   memset(&nmea, 0, sizeof nmea);
   memset(&nrf_fix, 0, sizeof nrf_fix);
-  clock_hh = 0;
-  clock_mm = 0;
+  clock_hh = 255;
+  clock_mm = 255;
   gps_on = true;
   board_init();
   out->ctx = NULL;
@@ -170,7 +170,7 @@ void beeper_hal_init(hal_t *out) {
   out->nvm_save = nvm_save;
   out->now_ms = now_ms;
   out->clock = clock_fn;
-  out->battery_pct = battery_pct;
+  out->battery = battery_fn;
   out->vibe = vibe;
   out->beep = beep;
   out->gps_fix = gps_fix_fn;
@@ -212,4 +212,8 @@ __attribute__((weak)) bool board_nvm_save(const uint8_t *bytes, size_t len) {
   return len <= NVM_BYTES;
 }
 __attribute__((weak)) void board_vibe(uint16_t ms) { (void)ms; }
+__attribute__((weak)) bool board_battery(battery_t *out) {
+  if (out) memset(out, 0, sizeof *out);
+  return false;
+}
 __attribute__((weak)) void board_backlight(bool on) { (void)on; }

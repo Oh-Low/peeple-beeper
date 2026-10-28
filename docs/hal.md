@@ -37,7 +37,8 @@ Host-only hooks (`emu_hal_push_encoder`, `emu_hal_push_raw`, `on_tx_raw`, …) a
 | `random_fill` | Entropy |
 | `nvm_load` / `nvm_save` | Opaque blob ≤ 100 KB |
 | `now_ms` / `clock` | Monotonic ms; wall HH:MM |
-| `battery_pct` / `vibe` / `beep` | Menu footer and haptics |
+| `battery` | Percent, and minutes until full while USB is connected |
+| `vibe` / `beep` | Menu footer haptics |
 | `gps_fix` | Latest GPS fix while the receiver is on, or no fix |
 | `gps_power` | Drive the GPS enable pin |
 | `heading` | Tilt, stillness, motor, and degrees clockwise from north |
@@ -61,7 +62,7 @@ Index is `(y >> 3) * 128 + x`, bit `1 << (y & 7)`.
 
 **RAM HAL** (`hal/emu`): queues for encoder, back, and raw RX, an NVM blob, LCG `random_fill`, `on_tx_raw` for the desktop mesh. Used by `make test` and `make emu`.
 
-**Feather** (`hal/beeper`): `beeper_hal.c` is the `hal_t` table. `board.c` is linked only by `make beeper`. Host builds keep the weak hooks, so `now_ms` stays 0, `nvm_load` returns empty, and `radio_poll` returns nothing. On the Feather the glass, knob, Back, clock, RNG, GPS UART, compass, and radio are live. `radio_send_raw` transmits. Whisper is −9 dBm and a page is +14 dBm. Beep drives no pin. Vibe only records a deadline. Battery stays 0. `beeper_gps_push_byte` still feeds `nmea_push_byte`.
+**Feather** (`hal/beeper`): `beeper_hal.c` is the `hal_t` table. `board.c` is linked only by `make beeper`. Host builds keep the weak hooks, so `now_ms` stays 0, `nvm_load` returns empty, and `radio_poll` returns nothing. On the Feather the glass, knob, Back, clock, RNG, GPS UART, compass, radio, and the battery divider are live. `radio_send_raw` transmits. Whisper is −9 dBm and a page is +14 dBm. Beep drives no pin. Vibe only records a deadline. `beeper_gps_push_byte` still feeds `nmea_push_byte`.
 
 ### GPS fix
 
@@ -76,6 +77,8 @@ The RAM HAL stores one fix (`emu_hal_set_gps`). The emulator turns an east/north
 The RAM HAL starts flat, still, and facing north (`emu_hal_set_heading`). A vibe stays `motor` until `now_ms` passes the duration. The Feather reads the LSM303AGR and returns false when the chip does not answer.
 
 `backlight(true)` enables the **D13** pull-up. `backlight(false)` drives **D13** low. The RAM HAL ignores it. The Feather applies it on the PN2222 that feeds the backlight.
+
+`battery` writes percent, whether USB power is present and the cell is still charging, and minutes until full at the 200 mA charge into the 1200 mAh pack. The RAM HAL returns 87 and not charging. The Feather reads half the cell voltage on **A6**.
 
 ---
 
