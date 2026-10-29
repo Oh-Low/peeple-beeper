@@ -668,7 +668,7 @@ static void radio_listen(void) {
 static void radio_prove(void);
 
 static int radio_up(void) {
-  if (!sx1262_setup(radio_write)) return 0;
+  if (!sx1262_setup(radio_write, 0x02)) return 0;
   radio_prove();
   radio_listen();
   next_beacon = REG(0xE0001004u) + (REG(0x10000060u) % 50u) * 20000u * CYCLES_PER_US;

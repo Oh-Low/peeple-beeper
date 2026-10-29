@@ -166,13 +166,18 @@ static void pair_on_leave(pair_session_t *session, identity_store_t *identity,
   pair_complete(session, hal);
 }
 
+static void pair_air(const hal_t *hal, bool on) {
+  hal->radio_set_whisper(hal->ctx, on);
+  hal->radio_set_continuous(hal->ctx, on);
+}
+
 void pair_start(pair_session_t *session, identity_store_t *identity, const hal_t *hal,
                 uint8_t beeple) {
   identity_load_or_create(identity, hal);
   session->last_error = PAIR_ERR_NONE;
   clear_session(session);
 
-  hal->radio_set_whisper(hal->ctx, true);
+  pair_air(hal, true);
 
   uint8_t eph[EPH_LEN];
   uint8_t nonce[HELLO_NONCE_LEN];
@@ -190,7 +195,7 @@ void pair_start(pair_session_t *session, identity_store_t *identity, const hal_t
   uint8_t encoded[RAW_FRAME_MAX];
   size_t n = frame_encode_hello(&hello, encoded, sizeof encoded);
   if (!n) {
-    hal->radio_set_whisper(hal->ctx, false);
+    pair_air(hal, false);
     return;
   }
 
@@ -251,7 +256,7 @@ void pair_tick(pair_session_t *session, identity_store_t *identity, contact_book
 }
 
 void pair_abort(pair_session_t *session, const hal_t *hal) {
-  hal->radio_set_whisper(hal->ctx, false);
+  pair_air(hal, false);
   clear_session(session);
 }
 
@@ -284,7 +289,7 @@ const char *pair_error(const pair_session_t *session) {
 }
 
 void pair_reset(pair_session_t *session, const hal_t *hal) {
-  if (hal) hal->radio_set_whisper(hal->ctx, false);
+  if (hal) pair_air(hal, false);
   session->last_error = PAIR_ERR_NONE;
   clear_session(session);
 }

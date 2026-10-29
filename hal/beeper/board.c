@@ -50,6 +50,7 @@ static int sample_on;
 static int gps_run;
 static int radio_ok;
 static int radio_released;
+static int radio_full;
 static int compass_ok;
 static uint32_t vibe_until;
 static uint32_t rtc_epoch;
@@ -552,10 +553,11 @@ static int radio_read(uint8_t cmd, uint8_t *dst, int n) {
   return 1;
 }
 
+static void radio_listen(void);
+
 /* D12 is the SX1262 NRESET. */
 static void radio_init(void) {
   uint8_t sync[2];
-  uint8_t rx[4];
   if (!radio_released) {
     pin_clr(D12);
     delay_us(200);
@@ -563,7 +565,7 @@ static void radio_init(void) {
     radio_released = 1;
   }
   if (!wait_busy(100000)) return;
-  if (!sx1262_setup(radio_write)) return;
+  if (!sx1262_setup(radio_write, 0x00)) return;
   radio_begin();
   spi_byte(0x1D);
   spi_byte((uint8_t)(SYNC_REG >> 8));
@@ -573,17 +575,40 @@ static void radio_init(void) {
   sync[1] = spi_byte(0x00);
   radio_end();
   (void)sync;
-  rx[0] = 0x82;
-  rx[1] = 0xFF;
-  rx[2] = 0xFF;
-  rx[3] = 0xFF;
-  if (!radio_write(rx, 4)) return;
   radio_ok = 1;
+  radio_listen();
+}
+
+/* NSS wakes a duty-cycle sleep. */
+static void radio_wake(void) {
+  if (!pin_get(D11)) return;
+  radio_begin();
+  delay_us(1);
+  radio_end();
+  wait_busy(30000);
 }
 
 static void radio_listen(void) {
-  uint8_t rx[4] = {0x82, 0xFF, 0xFF, 0xFF};
-  radio_write(rx, 4);
+  uint8_t standby[2];
+  radio_wake();
+  standby[0] = 0x80;
+  standby[1] = 0x00;
+  if (!radio_write(standby, 2)) return;
+  if (radio_full) {
+    uint8_t rx[4] = {0x82, 0xFF, 0xFF, 0xFF};
+    radio_write(rx, 4);
+    return;
+  }
+  /* 28 ms listen, 32 ms sleep. */
+  uint8_t duty[7] = {0x94, 0x00, 0x07, 0x00, 0x00, 0x08, 0x00};
+  radio_write(duty, 7);
+}
+
+void board_radio_continuous(bool on) {
+  int next = on ? 1 : 0;
+  if (radio_full == next) return;
+  radio_full = next;
+  if (radio_ok) radio_listen();
 }
 
 void board_radio_send(const uint8_t *bytes, size_t len, bool whisper) {
@@ -597,6 +622,7 @@ void board_radio_send(const uint8_t *bytes, size_t len, bool whisper) {
   int i;
   if (!radio_ok || !bytes || len == 0) return;
   if (len > RAW_FRAME_MAX) len = RAW_FRAME_MAX;
+  radio_wake();
   standby[0] = 0x80;
   standby[1] = 0x00;
   if (!radio_write(standby, 2)) {
@@ -660,6 +686,7 @@ bool board_radio_poll(raw_frame_t *out) {
   int n;
   int i;
   if (!out || !radio_ok) return false;
+  if (pin_get(D11)) return false;
   if (!radio_read(0x12, irq, 2)) return false;
   flags = (uint16_t)(((uint16_t)irq[0] << 8) | irq[1]);
   if ((flags & 0x0242u) == 0) return false;

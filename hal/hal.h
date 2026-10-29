@@ -74,6 +74,7 @@ typedef struct hal {
   void (*random_fill)(void *ctx, uint8_t *buf, size_t len);
   void (*radio_set_whisper)(void *ctx, bool on);
   bool (*radio_whisper)(void *ctx);
+  void (*radio_set_continuous)(void *ctx, bool on);
   void (*radio_send_raw)(void *ctx, const uint8_t *bytes, size_t len);
   bool (*radio_poll_raw)(void *ctx, raw_frame_t *out);
   size_t (*nvm_load)(void *ctx, uint8_t *out, size_t max);

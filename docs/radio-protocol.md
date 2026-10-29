@@ -90,7 +90,7 @@ The radio is in exactly one of two modes. `beeper_tick` runs pairing **or** pagi
 
 ### Whisper pairing
 
-Active while Add-contact is live (`pair_start` → `radio_set_whisper(true)`). Only HELLO / HELLO_ACK / PAIR_LEAVE are processed. PAGE frames that arrive during this window are ignored.
+Active while Add-contact is live (`pair_start` → `radio_set_whisper(true)` and continuous receive). Only HELLO / HELLO_ACK / PAIR_LEAVE are processed. PAGE frames that arrive during this window are ignored. Outside that screen the receiver sniffs 28 ms on and 32 ms off.
 
 **Whisper** means minimum TX power on hardware. The host emulator only stores a boolean; it does not change range by itself.
 

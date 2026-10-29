@@ -47,6 +47,14 @@ typedef enum {
   OUTBOX_FAILED,
 } outbox_status_t;
 
+typedef enum {
+  LIGHT_OFF = 0,
+  LIGHT_30S,
+  LIGHT_1M,
+  LIGHT_5M,
+  LIGHT_ON,
+} light_mode_t;
+
 typedef struct {
   char from[PAGE_FROM_MAX + 1];
   char body[PAGE_BODY_MAX + 1];
@@ -99,8 +107,11 @@ typedef struct {
   bool tz_edit;
   /* Saved. Inverts the finished frame. */
   bool dark_mode;
-  /* Saved. Starts on. */
-  bool backlight_on;
+  /* Saved. */
+  uint8_t light_mode;
+  bool light_edit;
+  bool light_lit;
+  uint32_t light_since;
   /* Saved. Index 0 is Voidfarer. */
   int beeple;
   /* Right 64×64 of a side menu. NULL leaves it blank. */
@@ -135,3 +146,4 @@ void screen_render(screen_t *screen, const hal_t *hal);
 bool screen_handle_text(screen_t *screen, const char *key);
 void screen_poll_send(screen_t *screen, const hal_t *hal);
 void screen_reset(screen_t *screen);
+void screen_light_apply(screen_t *screen, const hal_t *hal);

@@ -5,7 +5,7 @@
 
 typedef int (*sx1262_write_fn)(const uint8_t *bytes, int n);
 
-int sx1262_setup(sx1262_write_fn write);
+int sx1262_setup(sx1262_write_fn write, uint8_t irq_hi);
 int sx1262_packet_len(sx1262_write_fn write, uint8_t len);
 
 #endif

@@ -61,6 +61,11 @@ static void radio_set_whisper(void *ctx, bool on) {
   r->whisper = on;
 }
 
+static void radio_set_continuous(void *ctx, bool on) {
+  (void)ctx;
+  (void)on;
+}
+
 static bool radio_whisper(void *ctx) {
   emu_hal_t *r = ctx;
   return r->whisper;
@@ -129,8 +134,8 @@ static void beep(void *ctx, uint16_t ms) {
 }
 
 static void backlight_fn(void *ctx, bool on) {
-  (void)ctx;
-  (void)on;
+  emu_hal_t *r = ctx;
+  r->backlight_on = on;
 }
 
 static bool motor_running(const emu_hal_t *r) {
@@ -181,6 +186,7 @@ void emu_hal_init(emu_hal_t *r, hal_t *out) {
   out->random_fill = random_fill;
   out->radio_set_whisper = radio_set_whisper;
   out->radio_whisper = radio_whisper;
+  out->radio_set_continuous = radio_set_continuous;
   out->radio_send_raw = radio_send_raw;
   out->radio_poll_raw = radio_poll_raw;
   out->nvm_load = nvm_load;

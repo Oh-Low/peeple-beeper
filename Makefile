@@ -75,6 +75,9 @@ $(BUILD)/relay_test: $(TEST_DIR)/relay_test.c $(TEST_DIR)/page_harness.h $(FW_LI
 $(BUILD)/store_test: $(TEST_DIR)/store_test.c $(FW_LINK) | $(BUILD)
 	$(CC) $(CFLAGS) -Ihal/emu -o $@ $(TEST_DIR)/store_test.c $(FW_LINK)
 
+$(BUILD)/screen_test: $(TEST_DIR)/screen_test.c $(FW_LINK) | $(BUILD)
+	$(CC) $(CFLAGS) -Ihal/emu -o $@ $(TEST_DIR)/screen_test.c $(FW_LINK)
+
 $(BUILD)/mesh_test: $(TEST_DIR)/mesh_test.c $(FW_LINK) | $(BUILD)
 	$(CC) $(CFLAGS) -Ihal/emu -o $@ $(TEST_DIR)/mesh_test.c $(FW_LINK)
 
@@ -96,10 +99,11 @@ $(BUILD)/receiver_test: $(TEST_DIR)/receiver_test.c $(TEST_DIR)/locate_harness.h
 $(BUILD)/locate_test: $(TEST_DIR)/locate_test.c $(TEST_DIR)/locate_harness.h $(FW_LINK) | $(BUILD)
 	$(CC) $(CFLAGS) -Ihal/emu -o $@ $(TEST_DIR)/locate_test.c $(FW_LINK)
 
-test: $(BUILD)/page_test $(BUILD)/relay_test $(BUILD)/store_test $(BUILD)/mesh_test $(BUILD)/seed_test $(BUILD)/pair_test $(BUILD)/gps_test $(BUILD)/heading_test $(BUILD)/receiver_test $(BUILD)/locate_test
+test: $(BUILD)/page_test $(BUILD)/relay_test $(BUILD)/store_test $(BUILD)/screen_test $(BUILD)/mesh_test $(BUILD)/seed_test $(BUILD)/pair_test $(BUILD)/gps_test $(BUILD)/heading_test $(BUILD)/receiver_test $(BUILD)/locate_test
 	$(BUILD)/page_test
 	$(BUILD)/relay_test
 	$(BUILD)/store_test
+	$(BUILD)/screen_test
 	$(BUILD)/mesh_test
 	$(BUILD)/seed_test
 	$(BUILD)/pair_test

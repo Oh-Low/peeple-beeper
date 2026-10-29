@@ -34,6 +34,7 @@ Host-only hooks (`emu_hal_push_encoder`, `emu_hal_push_raw`, `on_tx_raw`, …) a
 | `encoder_poll` / `back_poll` | Queued edges |
 | `radio_send_raw` / `radio_poll_raw` | Encrypted PAGE / ACK and pairing |
 | `radio_set_whisper` / `radio_whisper` | Pairing TX power flag |
+| `radio_set_continuous` | Hold the receiver in continuous receive |
 | `random_fill` | Entropy |
 | `nvm_load` / `nvm_save` | Opaque blob ≤ 100 KB |
 | `now_ms` / `clock` | Monotonic ms; wall HH:MM |

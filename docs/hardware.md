@@ -50,11 +50,11 @@ The Feather image occupies flash `0x26000`–`0xDA000`. The store is the interna
 
 **Role.** Longer-range, low-bitrate pager mesh. Wi-Fi would need infrastructure and more power; BLE’s range and topology are the wrong fit for a neighborhood page flood. The app protocol (pairing, PAGE/ACK, crypto, relay) is independent of PHY: LoRa is a clear pipe. Max raw frame is **128 bytes** (`RAW_FRAME_MAX`). CAD/LBT and collision handling are not implemented.
 
-**HAL hook.** App air uses `radio_send_raw` / `radio_poll_raw` (copy on poll, a zero-length send does nothing). `radio_set_whisper` / `radio_whisper` are TX-power mode (see [Power and pairing](#power-and-pairing)). Pairing and encrypted paging both use that raw path.
+**HAL hook.** App air uses `radio_send_raw` / `radio_poll_raw` (copy on poll, a zero-length send does nothing). `radio_set_whisper` / `radio_whisper` are TX-power mode (see [Power and pairing](#power-and-pairing)). `radio_set_continuous` holds the receiver in continuous receive. Pairing and encrypted paging both use that raw path.
 
 **Emulator.** [`firmware/host/mesh.c`](../firmware/host/mesh.c) fans each TX to other host radios. Units sit on the **east/north foot grid**. A hop exists only if the straight-line distance is under 100 ft (`RADIO_RANGE_FT`). RSSI is **−30 dBm** at 0 ft, falling **60 dB** linearly across that span; at 100 ft the link is silent. Firmware paging has **no RSSI gate**; the 100 ft cutoff is host-only. There are **no collisions, no CAD, no airtime model, no loopback**. Whisper is a bool and does not change emulator RSSI or range. Default bench radios sit at east 0 / 75 / 150, north 0, so A reaches C only through B.
 
-On the Feather, **D12** is the SX1262 **NRESET** and nothing else. `board.c` pulses it once at boot, then leaves it high. `radio_set_whisper` and `radio_send_raw` do not pulse it. The module's 32 MHz clock is a TCXO powered from DIO3 at 1.8 V. The modem command list is `hal/beeper/sx1262_setup.c`, shared with the wire test: 915 MHz, SF7, 125 kHz, coding rate 4/5. `radio_send_raw` transmits that frame. Whisper uses −9 dBm. A page uses +14 dBm. `page_radio_reset` only clears RAM. CAD/LBT is not implemented.
+On the Feather, **D12** is the SX1262 **NRESET** and nothing else. `board.c` pulses it once at boot, then leaves it high. `radio_set_whisper` and `radio_send_raw` do not pulse it. The module's 32 MHz clock is a TCXO powered from DIO3 at 1.8 V, and that clock takes 10 ms to start. The modem command list is `hal/beeper/sx1262_setup.c`, shared with the wire test: 915 MHz, SF7, 125 kHz, coding rate 4/5, 64-symbol preamble. The pager sniffs for 28 ms and sleeps 32 ms. A 64-symbol preamble outlasts that sleep plus the 10 ms clock start. Add-contact listens continuously until pairing ends. A poll does not touch the radio while BUSY is high, because chip-select wakes that sleep. `radio_send_raw` transmits that frame. Whisper uses −9 dBm. A page uses +14 dBm. `page_radio_reset` only clears RAM. CAD/LBT is not implemented.
 
 ### 128×64 1-bit FSTN LCD (ST7567-style)
 
@@ -64,7 +64,7 @@ On the Feather, **D12** is the SX1262 **NRESET** and nothing else. `board.c` pul
 
 **Emulator.** The bench blits the buffer to a scaled 128×64 LCD. Pixel colors are a host FSTN approximation (dark on light), not a panel datasheet.
 
-The breadboard glass is the BuyDisplay ERM12864 with an ST7567. `board.c` uses bias `0xA2`, ratio `0x22`, and electronic volume `0x34`. That contrast reads straight on. The backlight switch is a PN2222 on **D13**. The internal pull-up holds the light on. Driving **D13** low turns it off. Settings stores that choice.
+The breadboard glass is the BuyDisplay ERM12864 with an ST7567. `board.c` uses bias `0xA2`, ratio `0x22`, and electronic volume `0x34`. That contrast reads straight on. The backlight switch is a PN2222 on **D13**. The internal pull-up holds the light on. Driving **D13** low turns it off. Settings stores off, 30 seconds, 1 minute, 5 minutes, or on. On stays lit. Off stays dark. A time turns the light off after that long with no touch, and a touch or an alert turns it back on.
 
 ### Rotary encoder
 

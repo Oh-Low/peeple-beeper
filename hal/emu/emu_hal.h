@@ -26,6 +26,7 @@ typedef struct {
   gps_fix_t gps;
   bool gps_set;
   bool gps_on;
+  bool backlight_on;
   int tilt_deg;
   bool still;
   int heading_deg;

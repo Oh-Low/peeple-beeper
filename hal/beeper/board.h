@@ -17,6 +17,7 @@ void board_gps_power(bool on);
 bool board_heading(heading_sample_t *out);
 bool board_radio_poll(raw_frame_t *out);
 void board_radio_send(const uint8_t *bytes, size_t len, bool whisper);
+void board_radio_continuous(bool on);
 size_t board_nvm_load(uint8_t *out, size_t max);
 bool board_nvm_save(const uint8_t *bytes, size_t len);
 void board_vibe(uint16_t ms);

@@ -1,6 +1,6 @@
 #include "sx1262_setup.h"
 
-/* 915 MHz, SF7, 125 kHz, 4/5. Each command is a length byte, then the SPI bytes. */
+/* 915 MHz, SF7, 125 kHz, 4/5, 64-symbol preamble. */
 static const uint8_t sx1262_setup_cmds[] = {
     2, 0x80, 0x00,
     /* 32 MHz TCXO is powered from DIO3. 1.8 V, 10 ms to start. */
@@ -15,18 +15,18 @@ static const uint8_t sx1262_setup_cmds[] = {
     3, 0x8E, 0xF7, 0x04,
     3, 0x8F, 0x00, 0x00,
     5, 0x8B, 0x07, 0x04, 0x01, 0x00,
-    7, 0x8C, 0x00, 0x08, 0x00, 0xFF, 0x01, 0x00,
-    9, 0x08, 0x02, 0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    7, 0x8C, 0x00, 0x40, 0x00, 0xFF, 0x01, 0x00,
     0
 };
 
-int sx1262_setup(sx1262_write_fn write) {
+int sx1262_setup(sx1262_write_fn write, uint8_t irq_hi) {
   const uint8_t *p = sx1262_setup_cmds;
+  uint8_t dio[9] = {0x08, irq_hi, 0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
   while (*p) {
     if (!write(p + 1, *p)) return 0;
     p += 1 + *p;
   }
-  return 1;
+  return write(dio, 9);
 }
 
 int sx1262_packet_len(sx1262_write_fn write, uint8_t len) {

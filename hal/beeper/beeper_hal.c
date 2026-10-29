@@ -58,6 +58,11 @@ static void radio_set_whisper(void *ctx, bool on) {
   whisper = on;
 }
 
+static void radio_set_continuous(void *ctx, bool on) {
+  (void)ctx;
+  board_radio_continuous(on);
+}
+
 static bool radio_whisper(void *ctx) {
   (void)ctx;
   return whisper;
@@ -164,6 +169,7 @@ void beeper_hal_init(hal_t *out) {
   out->random_fill = random_fill;
   out->radio_set_whisper = radio_set_whisper;
   out->radio_whisper = radio_whisper;
+  out->radio_set_continuous = radio_set_continuous;
   out->radio_send_raw = radio_send_raw;
   out->radio_poll_raw = radio_poll_raw;
   out->nvm_load = nvm_load;
@@ -202,6 +208,7 @@ __attribute__((weak)) void board_radio_send(const uint8_t *bytes, size_t len, bo
   (void)len;
   (void)whisper_on;
 }
+__attribute__((weak)) void board_radio_continuous(bool on) { (void)on; }
 __attribute__((weak)) size_t board_nvm_load(uint8_t *out, size_t max) {
   (void)out;
   (void)max;

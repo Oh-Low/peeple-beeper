@@ -49,7 +49,7 @@ Tick order, frame types, and crypto are in [firmware-app.md](firmware-app.md) an
 | `firmware/src/*.c` | Screen, message session, pair, locate, store, display, crypto, frames. |
 | `firmware/host/` | Desktop foot-grid and RSSI (`mesh.c`) only. Tests and the emulator. |
 | `firmware/art/` | Generated 1-bit picture bytes (`art.c`). |
-| `firmware/tests/` | `page_test`, `relay_test`, `store_test`, `mesh_test`, `seed_test`, `pair_test`, `gps_test`, `heading_test`, `receiver_test`, `locate_test`. |
+| `firmware/tests/` | `page_test`, `relay_test`, `store_test`, `screen_test`, `mesh_test`, `seed_test`, `pair_test`, `gps_test`, `heading_test`, `receiver_test`, `locate_test`. |
 | `emu/` | SDL2 window + `seed.c` host directory. |
 | `Makefile` | `make test`, `make emu`, `make nrf-check`, `make bringup`, `make beeper`. |
 | `docs/` | This map and protocol/app/HAL notes. |
@@ -72,7 +72,7 @@ A change lands in the file that already owns that decision. When two files would
 
 | Decision | Owner | What stays outside |
 |----------|--------|-------------------|
-| SX1262 modem command list: 915 MHz, SF7, 125 kHz, 4/5, TCXO on DIO3 | `hal/beeper/sx1262_setup.c` | Pins, SPI, and the wire-test glass stay in their own images. A send passes its own payload length. |
+| SX1262 modem command list: 915 MHz, SF7, 125 kHz, 4/5, 64-symbol preamble, TCXO on DIO3 | `hal/beeper/sx1262_setup.c` | Pins, SPI, and the wire-test glass stay in their own images. A send passes its own payload length. The pager's 28 ms / 32 ms sniff lives in `board.c`, which passes timeout mask `0x00`. The wire test passes `0x02`. |
 | Wire layout of every frame | `frames.c` | Sessions call encode and decode. |
 | SHA-256 session key, seal, ack tag, locate tag | `crypto.c` | Sessions pass bytes in. |
 | Attempt loop for a sealed send: nonce list, attempt count, next-send time, accept a reply only from that peer on a stored nonce while the send is in flight | `attempt.c`. A page is nine tries, ten seconds then a minute. A locate is four tries, two seconds apart. The screen asks the session whether the first wait has elapsed. | Text, mascot, fix, denial, and no-sky stay in the session that owns them. `message.c` and `locate.c` stay two files. |
@@ -150,6 +150,7 @@ A test file is named for the decision it pins. A new proof of a decision goes in
 | Contact seeding | `seed_test` |
 | Restarting a pair | `pair_test` |
 | NVM blob round-trip, including the storage-budget guard | `store_test` |
+| Backlight timer, and leaving a grabbed settings value | `screen_test` |
 
 **HAL-only firmware.** Production files under `firmware/src` and `firmware/art` must not assume SDL or files. They call `hal->foo(hal->ctx, ...)`. They include `hal/hal.h` and no file under `hal/emu` or `hal/beeper`. The desktop mesh lives in `firmware/host`.
 
