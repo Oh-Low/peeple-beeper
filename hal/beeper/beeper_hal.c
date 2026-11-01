@@ -118,7 +118,7 @@ static void backlight_fn(void *ctx, bool on) {
 
 static void beep(void *ctx, uint16_t ms) {
   (void)ctx;
-  (void)ms;
+  board_beep(ms);
 }
 
 static bool heading_fn(void *ctx, heading_sample_t *out) {
@@ -219,6 +219,7 @@ __attribute__((weak)) bool board_nvm_save(const uint8_t *bytes, size_t len) {
   return len <= NVM_BYTES;
 }
 __attribute__((weak)) void board_vibe(uint16_t ms) { (void)ms; }
+__attribute__((weak)) void board_beep(uint16_t ms) { (void)ms; }
 __attribute__((weak)) bool board_battery(battery_t *out) {
   if (out) memset(out, 0, sizeof *out);
   return false;

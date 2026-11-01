@@ -6,6 +6,16 @@ build/
 .toolchain/
 emu-nvm-*.bin
 
+# KiCad
+*-backups/
+*.kicad_sch-bak
+*.kicad_pcb-bak
+fp-info-cache
+*.lck
+
+# Local Cursor MCP config (absolute paths to this machine)
+.cursor/mcp.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -95,4 +95,5 @@ void beeper_reset(beeper_t *b, const hal_t *hal) {
   b->nvm_hash = 0;
   store_save(b, hal);
   hal->vibe(hal->ctx, 0);
+  hal->beep(hal->ctx, 0);
 }

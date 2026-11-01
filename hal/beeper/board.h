@@ -21,6 +21,7 @@ void board_radio_continuous(bool on);
 size_t board_nvm_load(uint8_t *out, size_t max);
 bool board_nvm_save(const uint8_t *bytes, size_t len);
 void board_vibe(uint16_t ms);
+void board_beep(uint16_t ms);
 bool board_battery(battery_t *out);
 void board_backlight(bool on);
 void fault_blink(void);

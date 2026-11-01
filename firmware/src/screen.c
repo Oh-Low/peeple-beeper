@@ -40,6 +40,7 @@ enum {
   SET_DARK,
   SET_LIGHT,
   SET_VIBE,
+  SET_BEEP,
   SET_N
 };
 
@@ -393,9 +394,24 @@ static void on_turn(screen_t *screen, int dir) {
   else if (screen->mode == SCREEN_TRACKASK) clamp_sel(screen, 2);
 }
 
-static void stop_vibe_test(screen_t *screen, const hal_t *hal) {
+static void stop_output_tests(screen_t *screen, const hal_t *hal) {
   screen->vibe_test = false;
+  screen->beep_test = false;
   hal->vibe(hal->ctx, 0);
+  hal->beep(hal->ctx, 0);
+}
+
+static void service_vibe_test(screen_t *screen, const hal_t *hal) {
+  uint32_t phase;
+  uint16_t left;
+  if (!screen->vibe_test || screen->mode != SCREEN_SETTINGS) return;
+  phase = (hal->now_ms(hal->ctx) - screen->vibe_since) % 500u;
+  if (phase < 250u) {
+    left = (uint16_t)(250u - phase);
+    hal->vibe(hal->ctx, left);
+  } else {
+    hal->vibe(hal->ctx, 0);
+  }
 }
 
 static void on_back(screen_t *screen, const hal_t *hal) {
@@ -428,7 +444,7 @@ static void on_back(screen_t *screen, const hal_t *hal) {
       screen->light_edit = false;
       return;
     }
-    stop_vibe_test(screen, hal);
+    stop_output_tests(screen, hal);
     screen->mode = SCREEN_MENU;
     screen->sel = MENU_SETTINGS;
     return;
@@ -592,13 +608,13 @@ static void on_press(screen_t *screen, const hal_t *hal) {
   if (screen->mode == SCREEN_SETTINGS) {
     if (screen->sel == SET_BACK) {
       settings_release(screen);
-      stop_vibe_test(screen, hal);
+      stop_output_tests(screen, hal);
       screen->mode = SCREEN_MENU;
       screen->sel = MENU_SETTINGS;
       return;
     }
     if (screen->sel == SET_NAME) {
-      stop_vibe_test(screen, hal);
+      stop_output_tests(screen, hal);
       begin_name_edit(screen);
       return;
     }
@@ -624,8 +640,9 @@ static void on_press(screen_t *screen, const hal_t *hal) {
     }
     if (screen->sel == SET_VIBE) {
       screen->vibe_test = true;
-      hal->vibe(hal->ctx, 250);
+      screen->vibe_since = hal->now_ms(hal->ctx);
     }
+    if (screen->sel == SET_BEEP) screen->beep_test = true;
     return;
   }
   if (screen->mode == SCREEN_TRACKASK) {
@@ -731,10 +748,11 @@ void screen_on_page(screen_t *screen, const hal_t *hal, const page_t *page) {
   screen->has_alert = true;
   screen->flash_start = hal->now_ms(hal->ctx);
   screen->flash_ms = FLASH_MS;
+  settings_release(screen);
+  stop_output_tests(screen, hal);
   hal->vibe(hal->ctx, 250);
   hal->beep(hal->ctx, 80);
   light_wake(screen, hal);
-  settings_release(screen);
   if (screen->mode == SCREEN_SENDING) return;
   screen->mode = SCREEN_ALERT;
 }
@@ -1392,6 +1410,7 @@ static void name_for(screen_t *screen, const uint8_t *id, char *out, size_t n) {
 
 static const char *SET_LABEL[SET_N] = {
     "BACK", "NAME", "TRACKING", "CLOCK BAT", "TIME ZONE", "DARK MODE", "BACKLIGHT", "VIBE TEST",
+    "BEEP TEST",
 };
 
 static void small_fit_left(char *dst, size_t cap, const char *src, int x0, int end_ink) {
@@ -1436,6 +1455,7 @@ static void settings_value(const screen_t *screen, int idx, char *out, size_t ca
   else if (idx == SET_DARK) str_copy_max(out, cap, screen->dark_mode ? "on" : "off", 4);
   else if (idx == SET_LIGHT) str_copy_max(out, cap, light_label(screen->light_mode), 4);
   else if (idx == SET_VIBE) str_copy_max(out, cap, screen->vibe_test ? "on" : "off", 4);
+  else if (idx == SET_BEEP) str_copy_max(out, cap, screen->beep_test ? "on" : "off", 4);
 }
 
 static void settings_reveal(screen_t *screen) {
@@ -1556,10 +1576,9 @@ void screen_input(screen_t *screen, const hal_t *hal) {
 
 void screen_render(screen_t *screen, const hal_t *hal) {
   light_service(screen, hal);
-  if (screen->vibe_test) {
-    if (screen->mode == SCREEN_SETTINGS) hal->vibe(hal->ctx, 250);
-    else stop_vibe_test(screen, hal);
-  }
+  service_vibe_test(screen, hal);
+  /* A transmit waits in board_sample, which ends a short beep. */
+  if (screen->beep_test && screen->mode == SCREEN_SETTINGS) hal->beep(hal->ctx, 65535);
   uint8_t *buf = screen->buf;
   display_clear(buf);
   if (screen->mode == SCREEN_MENU) draw_menu(screen, hal, buf);
@@ -1647,6 +1666,7 @@ bool screen_poll_track(screen_t *screen, const hal_t *hal) {
   if (locate_ask_pending(screen->locate)) {
     if (screen->mode == SCREEN_TRACKASK) return false;
     settings_release(screen);
+    stop_output_tests(screen, hal);
     screen->mode = SCREEN_TRACKASK;
     screen->sel = 1;
     hal->vibe(hal->ctx, 250);
@@ -1669,6 +1689,7 @@ bool screen_poll_track(screen_t *screen, const hal_t *hal) {
   settings_release(screen);
   light_wake(screen, hal);
   if (screen->mode == SCREEN_TRACKED) return false;
+  stop_output_tests(screen, hal);
   screen->mode = SCREEN_TRACKED;
   screen->sel = 0;
   hal->vibe(hal->ctx, 250);
@@ -1697,6 +1718,7 @@ void screen_poll_send(screen_t *screen, const hal_t *hal) {
       screen->mode == SCREEN_NAMEEDIT || screen->mode == SCREEN_BODYEDIT) {
     return;
   }
+  if (screen->mode == SCREEN_SETTINGS) stop_output_tests(screen, hal);
   screen->mode = SCREEN_SENT;
 }
 
@@ -1721,5 +1743,6 @@ void screen_reset(screen_t *screen) {
   text_edit_reset(&screen->edit);
   canned_reset(&screen->canned);
   screen->vibe_test = false;
+  screen->beep_test = false;
   display_clear(screen->buf);
 }

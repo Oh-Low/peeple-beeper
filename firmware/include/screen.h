@@ -100,6 +100,8 @@ typedef struct {
   text_edit_t edit;
   canned_book_t canned;
   bool vibe_test;
+  uint32_t vibe_since;
+  bool beep_test;
   /* Saved. On draws the clock and battery above side-menu labels. */
   bool show_clock_bat;
   /* Saved. 0 is GMT. */

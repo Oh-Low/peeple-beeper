@@ -28,12 +28,14 @@ static const Pin D6 = {0, 7};
 static const Pin D9 = {0, 26};
 static const Pin A3 = {0, 28};
 static const Pin A4 = {0, 2};
+static const Pin A5 = {0, 3};
 static const Pin SDA = {0, 12};
 static const Pin SCL = {0, 11};
 static const Pin RX = {0, 24};
 static const Pin D5 = {1, 8};
 static const Pin LED_RED = {1, 15};
 static const Pin A6 = {0, 29};
+static const Pin D2 = {0, 10};
 
 enum {
   LCD_RATIO = 0x22,
@@ -53,6 +55,9 @@ static int radio_released;
 static int radio_full;
 static int compass_ok;
 static uint32_t vibe_until;
+static int vibe_on;
+static uint32_t beep_until;
+static int beep_run;
 static uint32_t rtc_epoch;
 static uint8_t gps_buf[256] __attribute__((aligned(4)));
 static uint8_t enc_prev;
@@ -65,6 +70,8 @@ static int back_edge;
 
 static void board_sample(void);
 static void battery_note(void);
+static void beep_service(void);
+static void vibe_service(void);
 static int rng_byte(void);
 
 void fault_blink(void) {
@@ -197,6 +204,8 @@ static void board_sample(void) {
   note_encoder();
   note_edge(&raw_a3, &stable_a3, &a3_since, !pin_get(A3), 0);
   note_edge(&raw_a4, &stable_a4, &a4_since, !pin_get(A4), 1);
+  beep_service();
+  vibe_service();
 }
 
 static void clocks(void) {
@@ -237,6 +246,8 @@ static void gpio_init(void) {
   pullup(A3);
   pullup(A4);
   pullup(D13); /* Pull-up holds the backlight on. */
+  drive(D2, 0);
+  drive(A5, 0);
   od_release(SDA);
   od_release(SCL);
   drive(D5, 1); /* High runs the receiver. */
@@ -834,14 +845,68 @@ static int rng_byte(void) {
   return (int)(REG(0x4000D508u) & 0xFFu);
 }
 
+static void nfc_as_gpio(void) {
+  uint32_t pins = REG(0x1000120Cu);
+  /* P0.10 stays NFC until this bit is clear at reset. */
+  if ((pins & 1u) == 0u) return;
+  nvmc_word(0x1000120Cu, pins & ~1u);
+  dsb();
+  REG(0xE000ED0Cu) = 0x05FA0004u;
+  for (;;) {
+  }
+}
+
 void board_init(void) {
   clocks();
+  nfc_as_gpio();
   gpio_init();
   rng_start();
   lcd_init();
   compass_init();
   radio_init();
   gps_start();
+}
+
+static void beep_hw_on(void) {
+  if (beep_run) return;
+  beep_run = 1;
+  pin_clr(D2);
+  pin_cnf(D2, CNF_OUT);
+  /* 4 kHz. A steady level is silent. */
+  REG(0x40006510u) = 3u | (10u << 8) | (3u << 16);
+  REG(0x4000A140u) = 0;
+  REG(0x4000A504u) = 0;
+  REG(0x4000A508u) = 0;
+  REG(0x4000A510u) = 0;
+  REG(0x4000A540u) = 2000;
+  REG(0x4000A200u) = 1u;
+  REG(0x4001F510u) = 0x4000A140u;
+  REG(0x4001F514u) = 0x40006000u;
+  REG(0x4001F504u) = 1u;
+  REG(0x4000A00Cu) = 1u;
+  REG(0x4000A000u) = 1u;
+}
+
+static void beep_hw_off(void) {
+  if (!beep_run) return;
+  beep_run = 0;
+  REG(0x4000A004u) = 1u;
+  REG(0x4001F508u) = 1u;
+  REG(0x40006510u) = 0;
+  drive(D2, 0);
+}
+
+static void beep_service(void) {
+  int live = beep_until && (int32_t)(beep_until - rtc_ms()) > 0;
+  if (live) beep_hw_on();
+  else beep_hw_off();
+}
+
+static void vibe_service(void) {
+  int live = vibe_until && (int32_t)(vibe_until - rtc_ms()) > 0;
+  if (vibe_on == live) return;
+  vibe_on = live;
+  drive(A5, live);
 }
 
 void board_pump(void) {
@@ -1017,6 +1082,12 @@ uint32_t board_now_ms(void) {
 void board_gps_power(bool on) { drive(D5, on); }
 
 void board_vibe(uint16_t ms) {
-  /* The deadline only tells heading the motor was requested. */
+  /* High runs the motor. Heading reads this same deadline. */
   vibe_until = ms ? rtc_ms() + ms : 0;
+  vibe_service();
+}
+
+void board_beep(uint16_t ms) {
+  beep_until = ms ? rtc_ms() + ms : 0;
+  beep_service();
 }

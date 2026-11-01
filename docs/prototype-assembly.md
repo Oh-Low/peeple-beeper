@@ -264,7 +264,7 @@ Some motor discs use black instead of blue for the negative lead. The lead that 
 
 ## 8. Piezo
 
-The PS1240 does not beep if you put steady 3.3 volts across it. It beeps when a pin toggles back and forth, which firmware will do later. It has no polarity. The 100 Ω resistor (bands brown, black, brown, gold) keeps the current pulse small.
+The PS1240 does not beep if you put steady 3.3 volts across it. It beeps when a pin toggles back and forth. Settings **BEEP TEST** does that. It has no polarity. The 100 Ω resistor (bands brown, black, brown, gold) keeps the current pulse small.
 
 - [ ] One piezo leg to the blue rail.
 - [ ] The other piezo leg to one end of the 100 Ω resistor.
@@ -370,7 +370,7 @@ Unplug the LiPo. Plug in only USB. These boxes stay empty unless the bad conditi
 - [ ] Compass powered from the red rail, **SDA** and **SCL** on those Feather pins, **CSA** and **CSM** empty, **D12** connected only to radio `GP15`, **PPS** still empty.
 - [ ] Adafruit LiPo in the Feather's white socket. Radio battery still in the bag.
 
-The pager image is `make beeper`, then `make flash-beeper` once `FTHR840BOOT` is mounted. That image turns the **D13** pull-up on, so the backlight comes on. Settings, then BACKLIGHT, then a press, highlights the value. The knob steps `off`, `30s`, `1m`, `5m`, and `on`. `off` drives **D13** low. `on` holds the pull-up. A time turns the light off after that long with no touch. The choice is kept. The glass shows the menu. Add-contact transmits a short-range hello. Piezo and the motor stay undriven.
+The pager image is `make beeper`, then `make flash-beeper` once `FTHR840BOOT` is mounted. That image turns the **D13** pull-up on, so the backlight comes on. Settings, then BACKLIGHT, then a press, highlights the value. The knob steps `off`, `30s`, `1m`, `5m`, and `on`. `off` drives **D13** low. `on` holds the pull-up. A time turns the light off after that long with no touch. The choice is kept. The glass shows the menu. Add-contact transmits a short-range hello. **A5** is held low, so the motor stays still. Settings **VIBE TEST** pulses it a quarter second on and off. Settings **BEEP TEST** toggles the piezo.
 
 ## Wire test
 

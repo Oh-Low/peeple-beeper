@@ -92,13 +92,13 @@ The breadboard glass is the BuyDisplay ERM12864 with an ST7567. `board.c` uses b
 
 ### Vibe and beep
 
-**Role.** Haptic and audio alerts: new page (`vibe(250)`, `beep(80)`), pairing start/complete, canned save, and a settings vibe tester.
+**Role.** Haptic and audio alerts: new page (`vibe(250)`, `beep(80)`), pairing start/complete, canned save, and settings vibe and beep testers.
 
-**HAL hook.** `vibe(ms)` and `beep(ms)`. Duration is milliseconds; `vibe(0)` cancels in firmware reset / tester off.
+**HAL hook.** `vibe(ms)` and `beep(ms)`. Duration is milliseconds. `vibe(0)` and `beep(0)` cancel.
 
-**Emulator.** The RAM HAL stores the last duration in `vibe_ms` and `beep_ms`. The window does not draw a motor or play a tone. No motor, no piezo.
+**Pins.** The PS1240 sits on **D2** through 100 Ω. A steady level is silent, so the pin toggles at 4 kHz for the requested time. **D2** is NFC2 until the user-information bit that hands it to GPIO is clear. **A5** drives the motor switch and is held low, so the motor is off until a vibe. High runs it for the requested time. Heading reads that same deadline and hides the arrow while it is running.
 
-**TBD.** Motor, driver, piezo or speaker, and whether beep is a GPIO toggle or a PWM.
+**Emulator.** The RAM HAL stores the last duration in `vibe_ms` and `beep_ms`. The window does not draw a motor or play a tone.
 
 ### Battery
 
@@ -162,7 +162,7 @@ Battery math, sleep current, and TX current vs whisper are not in the repo.
 
 ## What the board HAL must implement
 
-`hal/beeper/board.c` fills that table on the Feather: glass, knob, Back, RNG, the 100 KB store, RTC milliseconds, the RMC clock, GPS, heading, the battery divider, and the radio. Whisper transmits at −9 dBm, and a page at +14 dBm. Beep and the vibe pin stay idle. **D12** is still reset-only.
+`hal/beeper/board.c` fills that table on the Feather: glass, knob, Back, RNG, the 100 KB store, RTC milliseconds, the RMC clock, GPS, heading, the battery divider, and the radio. Whisper transmits at −9 dBm, and a page at +14 dBm. Beep toggles **D2**. **A5** is held low and goes high for a vibe. **D12** is still reset-only.
 
 Firmware stays the C in `firmware/src`. See [firmware app](firmware-app.md).
 

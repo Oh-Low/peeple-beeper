@@ -63,7 +63,7 @@ Index is `(y >> 3) * 128 + x`, bit `1 << (y & 7)`.
 
 **RAM HAL** (`hal/emu`): queues for encoder, back, and raw RX, an NVM blob, LCG `random_fill`, `on_tx_raw` for the desktop mesh. Used by `make test` and `make emu`.
 
-**Feather** (`hal/beeper`): `beeper_hal.c` is the `hal_t` table. `board.c` is linked only by `make beeper`. Host builds keep the weak hooks, so `now_ms` stays 0, `nvm_load` returns empty, and `radio_poll` returns nothing. On the Feather the glass, knob, Back, clock, RNG, GPS UART, compass, radio, and the battery divider are live. `radio_send_raw` transmits. Whisper is −9 dBm and a page is +14 dBm. Beep drives no pin. Vibe only records a deadline. `beeper_gps_push_byte` still feeds `nmea_push_byte`.
+**Feather** (`hal/beeper`): `beeper_hal.c` is the `hal_t` table. `board.c` is linked only by `make beeper`. Host builds keep the weak hooks, so `now_ms` stays 0, `nvm_load` returns empty, and `radio_poll` returns nothing. On the Feather the glass, knob, Back, clock, RNG, GPS UART, compass, radio, and the battery divider are live. `radio_send_raw` transmits. Whisper is −9 dBm and a page is +14 dBm. Beep toggles **D2** at 4 kHz for the requested milliseconds. **A5** is held low and goes high for a vibe. `beeper_gps_push_byte` still feeds `nmea_push_byte`.
 
 ### GPS fix
 
