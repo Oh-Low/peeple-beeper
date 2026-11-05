@@ -26,3 +26,9 @@ fp-info-cache
 *.njsproj
 *.sln
 *.sw?
+
+# KiCad local editor junk
+.history/
+.mcp-backups/
+*.lck
+~*

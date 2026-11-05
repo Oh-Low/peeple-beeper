@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "modules")(type "KiCad")(uri "/Users/ohlow/Projects/peeple-beeper/hardware/pcb/modules.kicad_sym")(options "")(descr "PCB version module symbols"))
+)
