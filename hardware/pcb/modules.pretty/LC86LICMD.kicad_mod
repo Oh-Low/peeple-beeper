@@ -181,4 +181,9 @@
 		(layer "F.SilkS")
 		(uuid "51988164-bf9a-452c-a511-6827552a04e2")
 	)
+	(model "${KIPRJMOD}/modules.3dshapes/LC86LICMD.step"
+		(offset (xyz 0 0 0))
+		(scale (xyz 1 1 1))
+		(rotate (xyz 0 0 0))
+	)
 )

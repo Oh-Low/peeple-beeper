@@ -197,4 +197,9 @@
 		(layer "F.SilkS")
 		(uuid "ed61c99b-9f0c-40a2-8671-81231edf4e29")
 	)
+	(model "${KIPRJMOD}/modules.3dshapes/HT-RA62.step"
+		(offset (xyz 0 0 0))
+		(scale (xyz 1 1 1))
+		(rotate (xyz 0 0 0))
+	)
 )

@@ -26,3 +26,17 @@ Same two files, after the round 1 edits. Scope returned nothing to remove.
 | 13 | correctness | The cell divider is 50 kΩ into the ADC with no capacitor. | `pcb.kicad_sch` R14, R15, BAT_ADC | FIXED |
 | 14 | correctness | The buck lets the 3.3 V rail follow the cell down once the cell is near 3.3 V. | `pcb.kicad_sch` U3 | REJECTED — a buck cannot hold 3.3 V from a 3.0 V cell. That is the topology in `docs/pcb-bom.md` |
 | 15 | band-aids | Delete Q6 and R19 and drive RESET_N from IO40 as an open-drain GPIO. | `pcb.kicad_sch` Q6, R19 | REJECTED — RESET_N maximum high is 3.1 V, and a GPIO high is the 3.3 V rail. The FET is what keeps that rail off the pin |
+
+## Round 3 — BOM vs connections
+
+Reviewed uncommitted `docs/pcb-bom.md` against `docs/pcb-connections.md` (connections is authority). Lenses: correctness, scope, band-aids. Architecture / latent / comments / ponytail skipped — inventory sync, not structure.
+
+| # | Lenses | Finding | Where | Disposition |
+|---|---|---|---|---|
+| 16 | correctness | Passives table omitted C9/C10, R19, R20, and the second 2N7002 (Q6); 100 nF / 10 µF counts did not match connections. | `docs/pcb-bom.md` Passives | FIXED — table rewritten with refs from connections |
+| 17 | correctness | ESP32 note said leave GPIO3 free; connections pulls IO3 down with R20. GPS note said reset was not designed; connections has Q6/R19. | `docs/pcb-bom.md` module blurbs | FIXED |
+| 18 | correctness | Quoted Parts total still uses the old $2.50 passives estimate after the discrete list grew (charger caps, Q6, R19, R20). | `docs/pcb-bom.md` Quoted parts | ASKED — reprice or leave as rough estimate |
+| 19 | correctness | Piezo blurb still says any free GPIO except the four strapping pins; connections hard-wires PIEZO to IO17, and IO3 is occupied by R20. | `docs/pcb-bom.md` GSC1030RB | OPEN |
+| 20 | scope | Delete the retold net/polarity prose from module blurbs and point only at connections. | `docs/pcb-bom.md` What each module requires | REJECTED — shopping notes still need the short why; connections stays the pin authority |
+| 21 | scope | SW2 has no quoted MPN while SW1 does. | `docs/pcb-bom.md` SW2 vs SW1 | REJECTED — footprint class is enough until a part is picked; connections only names it Back |
+| 22 | band-aids | Nothing to strip. Q6/R19 stay per #6/#15. | — | — |

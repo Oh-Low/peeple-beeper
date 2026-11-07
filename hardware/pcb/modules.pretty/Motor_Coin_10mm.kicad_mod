@@ -93,4 +93,9 @@
 		(roundrect_rratio 0.15)
 		(uuid "3b9465fa-0109-4170-aa46-3ae3a070e842")
 	)
+	(model "${KIPRJMOD}/modules.3dshapes/Motor_Coin_10mm.step"
+		(offset (xyz 0 0 0))
+		(scale (xyz 1 1 1))
+		(rotate (xyz 0 0 0))
+	)
 )

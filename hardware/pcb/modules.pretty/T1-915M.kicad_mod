@@ -66,4 +66,9 @@
 		(layers "*.Cu" "*.Mask")
 		(uuid "96d6bbcc-21dd-4107-a6bb-511bc4aabf83")
 	)
+	(model "${KIPRJMOD}/modules.3dshapes/T1-915M.step"
+		(offset (xyz 0 0 0))
+		(scale (xyz 1 1 1))
+		(rotate (xyz 0 0 0))
+	)
 )

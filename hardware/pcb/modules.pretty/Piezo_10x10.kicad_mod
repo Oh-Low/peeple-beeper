@@ -93,4 +93,9 @@
 		(roundrect_rratio 0.15)
 		(uuid "0f5fb8cf-cea2-4a5d-be91-cb4938f3b40c")
 	)
+	(model "${KIPRJMOD}/modules.3dshapes/Piezo_10x10.step"
+		(offset (xyz 0 0 0))
+		(scale (xyz 1 1 1))
+		(rotate (xyz 0 0 0))
+	)
 )
