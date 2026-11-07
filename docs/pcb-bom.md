@@ -10,25 +10,25 @@ One cell. A buck makes the 3.3 V rail for the ESP32, the radio, the screen, the 
 
 One of each per board.
 
-| Role | Part | Order number | Vendor | Each | Ten |
-|---|---|---|---|---:|---:|
-| MCU | Espressif ESP32-S3-WROOM-1-N8 | C2913198 | LCSC | $4.78 | $47.80 |
-| USB-C jack | GCT USB4105-GF-A | 2073-USB4105-GF-ACT-ND | DigiKey | $0.68 | $6.80 |
-| LiPo charger | Microchip MCP73831T-2ACI/OT | MCP73831T-2ACI/OTCT-ND | DigiKey | $0.70 | $7.00 |
-| Radio, 902–928 MHz | Heltec HT-RA62 | ZC-144-915 | [Heltec](https://heltec.org/project/ht-ra62/) | $3.90 | $39.00 |
-| GPS, patch on the module | Quectel LC86LICMD | C7431213 | LCSC | $7.53 | $75.30 |
-| Compass | ST LSM303AGRTR | C126671 | LCSC | $1.94 | $19.40 |
-| Screen, 1.7 inch FPC | EastRising ERC12864FSF-9 | ERC12864FSF-9 | BuyDisplay | $2.12 | $21.20 |
-| Screen socket | 14-pin 1.0 mm ZIF | — | BuyDisplay | $0.16 | $1.60 |
-| Cell, 2000 mAh | LaskaKit 654060 / LA123150 | LA123150 | LaskaKit | $7.25 | $72.50 |
-| 915 MHz antenna | DreamLNK T1-915M | C726086 | LCSC | $0.24 | $2.40 |
-| Encoder | Bourns PEC11R-4220F-S0024 | PEC11R-4220F-S0024-ND | DigiKey | $1.79 | $17.90 |
-| 3.3 V buck | TI TLV62568DBVT | C2864104 | LCSC | $0.10 | $1.00 |
-| Battery header | JST S2B-PH-SM4-TB(LF)(SN) | 455-1749-1-ND | DigiKey | $0.42 | $4.20 |
-| Piezo, 4 kHz | INGHAi GSC1030RB-3V4000 | C255330 | LCSC | $0.49 | $4.90 |
-| Coin motor | Leader LCM1027A2445F | C2759984 | LCSC | $0.49 | $4.90 |
-| Passives | Listed in the next section | — | — | $2.50 | $25.00 |
-| **Parts** | | | | **$35.09** | **$350.90** |
+| Role | Part | Order number | Vendor | Spec | Each | Ten |
+|---|---|---|---|---|---:|---:|
+| MCU | Espressif ESP32-S3-WROOM-1-N8 | C2913198 | LCSC | [PDF](https://documentation.espressif.com/esp32-s3-wroom-1_wroom-1u_datasheet_en.pdf) | $4.78 | $47.80 |
+| USB-C jack | GCT USB4105-GF-A | 2073-USB4105-GF-ACT-ND | DigiKey | [PDF](https://gct.co/files/drawings/usb4105.pdf) | $0.68 | $6.80 |
+| LiPo charger | Microchip MCP73831T-2ACI/OT | MCP73831T-2ACI/OTCT-ND | DigiKey | [PDF](https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP73831-Family-Data-Sheet-DS20001984H.pdf) | $0.70 | $7.00 |
+| Radio, 902–928 MHz | Heltec HT-RA62 | ZC-144-915 | [Heltec](https://heltec.org/project/ht-ra62/) | [PDF](https://resource.heltec.cn/download/HT-RA62/HT-RA62(Rev1.1).pdf) | $3.90 | $39.00 |
+| GPS, patch on the module | Quectel LC86LICMD | C7431213 | LCSC | [PDF](https://mm.digikey.com/Volume0/opasdata/d220001/medias/docus/7133/Quectel_LC86L_GNSS_Specification_V1.4.pdf) | $7.53 | $75.30 |
+| Compass | ST LSM303AGRTR | C126671 | LCSC | [PDF](https://www.st.com/resource/en/datasheet/lsm303agr.pdf) | $1.94 | $19.40 |
+| Screen, 1.7 inch FPC | EastRising ERC12864FSF-9 | ERC12864FSF-9 | BuyDisplay | [PDF](https://www.buydisplay.com/download/manual/ERC12864-9_Datasheet.pdf) | $2.12 | $21.20 |
+| Screen socket | 14-pin 1.0 mm ZIF (Molex 200528-0140) | — | BuyDisplay | [PDF](https://www.molex.com/content/dam/molex/molex-dot-com/products/automated/en-us/productspecificationpdf/200/200528/2005280000-PS-000.pdf) | $0.16 | $1.60 |
+| Cell, 2000 mAh | LaskaKit 654060 / LA123150 | LA123150 | LaskaKit | [page](https://www.laskakit.cz/en/geb-lipol-baterie-654060-2000mah-3-7v-jst-ph-2-0/) | $7.25 | $72.50 |
+| 915 MHz antenna | DreamLNK T1-915M | C726086 | LCSC | [PDF](https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2206131616_DreamLNK-T1-915M_C726086.pdf) | $0.24 | $2.40 |
+| Encoder | Bourns PEC11R-4220F-S0024 | PEC11R-4220F-S0024-ND | DigiKey | [PDF](https://www.bourns.com/docs/product-datasheets/PEC11R.pdf) | $1.79 | $17.90 |
+| 3.3 V buck | TI TLV62568DBVT | C2864104 | LCSC | [PDF](https://www.ti.com/lit/ds/symlink/tlv62568.pdf) | $0.10 | $1.00 |
+| Battery header | JST S2B-PH-SM4-TB(LF)(SN) | 455-1749-1-ND | DigiKey | [PDF](https://media.digikey.com/pdf/Data%20Sheets/JST%20PDFs/PH%20Series.pdf) | $0.42 | $4.20 |
+| Piezo, 4 kHz | INGHAi GSC1030RB-3V4000 | C255330 | LCSC | [PDF](https://datasheet.lcsc.com/lcsc/1811151449_INGHAi-GSC1030RB-3V4000_C255330.pdf) | $0.49 | $4.90 |
+| Coin motor | Leader LCM1027A2445F | C2759984 | LCSC | [PDF](https://datasheet.lcsc.com/lcsc/C2759984.pdf) | $0.49 | $4.90 |
+| Passives | Listed in the next section | — | — | — | $2.50 | $25.00 |
+| **Parts** | | | | | **$35.09** | **$350.90** |
 
 The $2.50 line is an estimate. Every other line is a listed price. The Heltec price is the single-unit price; that page had no ten-piece break. The cell is €6.49 including VAT, taken as $7.25 at 1.117 dollars per euro. LaskaKit had 44 in stock. Whether that cell ships to the US was not confirmed.
 
