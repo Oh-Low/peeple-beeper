@@ -1175,7 +1175,7 @@
 			(size 0.8 0.95)
 			(layers "F.Cu" "F.Mask" "F.Paste")
 			(roundrect_rratio 0.25)
-			(net "BAT_ADC")
+			(net "I2C_SCL")
 			(uuid "461b51ed-f445-4f71-94a9-f9e91cff5e18")
 		)
 		(embedded_fonts no)
@@ -3697,7 +3697,7 @@
 			(size 2.5 1.5)
 			(layers "F.Cu" "F.Mask" "F.Paste")
 			(roundrect_rratio 0.15)
-			(net "GPS_VCC")
+			(net "+3V3")
 			(uuid "cd78fccc-b7f1-4cfd-baf4-550077fd05f2")
 		)
 		(pad "6" smd roundrect
@@ -12440,7 +12440,7 @@
 		(mid 0.43934 0.43934)
 		(end 1.5 0)
 		(stroke
-			(width 0)
+			(width 0.1)
 			(type default)
 		)
 		(layer "Edge.Cuts")
@@ -12450,7 +12450,7 @@
 		(start 0 70.5)
 		(end 0 1.5)
 		(stroke
-			(width 0)
+			(width 0.1)
 			(type default)
 		)
 		(layer "Edge.Cuts")
@@ -12460,7 +12460,7 @@
 		(start 1.5 0)
 		(end 58.5 0)
 		(stroke
-			(width 0)
+			(width 0.1)
 			(type default)
 		)
 		(layer "Edge.Cuts")
@@ -12471,7 +12471,7 @@
 		(mid 0.43934 71.56066)
 		(end 0 70.5)
 		(stroke
-			(width 0)
+			(width 0.1)
 			(type default)
 		)
 		(layer "Edge.Cuts")
@@ -12482,7 +12482,7 @@
 		(mid 59.56066 0.43934)
 		(end 60 1.5)
 		(stroke
-			(width 0)
+			(width 0.1)
 			(type default)
 		)
 		(layer "Edge.Cuts")
@@ -12492,7 +12492,7 @@
 		(start 58.5 72)
 		(end 1.5 72)
 		(stroke
-			(width 0)
+			(width 0.1)
 			(type default)
 		)
 		(layer "Edge.Cuts")
@@ -12502,7 +12502,7 @@
 		(start 60 1.5)
 		(end 60 70.5)
 		(stroke
-			(width 0)
+			(width 0.1)
 			(type default)
 		)
 		(layer "Edge.Cuts")
@@ -12513,7 +12513,7 @@
 		(mid 59.56066 71.56066)
 		(end 58.5 72)
 		(stroke
-			(width 0)
+			(width 0.1)
 			(type default)
 		)
 		(layer "Edge.Cuts")

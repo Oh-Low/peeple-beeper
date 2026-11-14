@@ -632,7 +632,7 @@
       "default_line_thickness": 6.0,
       "default_text_size": 50.0,
       "field_names": [],
-      "hop_over_size_choice": 0,
+      "hop_over_size_choice": 2,
       "intersheets_ref_own_page": false,
       "intersheets_ref_prefix": "",
       "intersheets_ref_short": false,
@@ -662,16 +662,16 @@
       {
         "filename": "pcb.kicad_sch",
         "name": "pcb",
-        "uuid": "00000000-0000-0000-0000-000000000000"
+        "uuid": "6e871881-bb5a-4b48-b668-664c239169ea"
       }
     ],
-    "used_designators": "",
+    "used_designators": "#PWR1-61,C1-29,D2-7,L1-2,Q2,R1-19,SW3,U8-9",
     "variants": []
   },
   "sheets": [
     [
       "6e871881-bb5a-4b48-b668-664c239169ea",
-      "Root"
+      "pcb"
     ]
   ],
   "text_variables": {},
