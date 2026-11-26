@@ -73,10 +73,10 @@ void text_edit_draft(const text_edit_t *edit, char *out, size_t cap) {
  * just before E, bottom to top, then the keys to the right of the rule. */
 static int flatten(const text_edit_t *edit, cell_t *out) {
   static const char *right[4] = {
-      "ETAOINSHRDL",
-      "CUMWFGYPBVK",
+      "ETAOINSRHDLUC",
+      "MFYWGPBVKXQJZ",
       "1234567890",
-      ".,?!'-@#$&*()+=/",
+      ".,?!'@#$%^&*()-_+=/",
   };
   static const cell_kind_t left_kind[4] = {CELL_SPC, CELL_SAVE, CELL_DEL, CELL_OK};
   static const char *left_label[4] = {"SPACE", "SAVE", "DEL", "OK"};
@@ -218,26 +218,39 @@ static void draw_edit_header(uint8_t *buf, uint8_t hh, uint8_t mm) {
   display_draw_text_small(buf, 107, 3, clock);
 }
 
+static int ch_adv(char c) {
+  char s[2] = {c, 0};
+  int w = display_text_width(s);
+  return w > 0 ? w : 2;
+}
+
+static int span_chars(const char *s, int a, int b) {
+  int w = 0;
+  for (int i = a; i < b && s && s[i]; i++) w += ch_adv(s[i]);
+  return w;
+}
+
 static void draw_draft_row(uint8_t *buf, const char *draft, int caret) {
   const int x0 = 4;
   const int end_ink = 124;
   int room = end_ink - x0 + 1;
-  int maxc = room < 3 ? 1 : (room - 3) / FONT_SMALL_W + 1;
   int len = draft ? (int)str_ascii_len(draft) : 0;
+  int caret_w = (draft && caret < len) ? ch_adv(draft[caret]) : 4;
   int start = 0;
-  if (caret > maxc - 1) start = caret - (maxc - 1);
-  if (start < 0) start = 0;
-  if (start > len) start = len;
+  while (draft && start < caret && span_chars(draft, start, caret) + caret_w > room) start++;
   char shown[40];
-  int n = len - start;
-  if (n > maxc) n = maxc;
-  if (n < 0) n = 0;
-  if (n > (int)sizeof shown - 1) n = (int)sizeof shown - 1;
-  if (n > 0 && draft) memcpy(shown, draft + start, (size_t)n);
+  int n = 0;
+  int x = x0;
+  for (int i = start; i < len && n < (int)sizeof shown - 1; i++) {
+    int adv = ch_adv(draft[i]);
+    if (x + adv - 1 > end_ink) break;
+    shown[n++] = draft[i];
+    x += adv;
+  }
   shown[n] = 0;
   display_draw_text_small(buf, x0, 17, shown);
-  int cx = x0 + (caret - start) * FONT_SMALL_W;
-  if (cx <= end_ink - 2) display_invert_rect(buf, cx, 17, 3, FONT_SMALL_H);
+  int cx = x0 + span_chars(draft, start, caret);
+  if (cx <= end_ink - 1) display_invert_rect(buf, cx, 17, caret_w, FONT_SMALL_H);
 }
 
 void text_edit_draw(text_edit_t *edit, uint8_t *buf, uint8_t hh, uint8_t mm) {
@@ -247,34 +260,42 @@ void text_edit_draw(text_edit_t *edit, uint8_t *buf, uint8_t hh, uint8_t mm) {
   draw_draft_row(buf, edit->draft, edit->caret);
   for (int x = 1; x <= 90; x++) display_set_pixel(buf, x, 25, true);
 
-  static const int row_y[4] = {33, 40, 47, 54};
-  static const int row_pitch[4] = {7, 7, 6, 5};
+  static const int row_y[4] = {33, 41, 49, 57};
+  const int key_x0 = 34;
   cell_t cells[CELL_MAX];
   int n = flatten(edit, cells);
   for (int r = 0; r < 4; r++) {
     int y = row_y[r];
-    int x = 34;
-    int pitch = row_pitch[r];
+    int chars = 0;
+    int ink = 0;
+    for (int i = 0; i < n; i++) {
+      if (cells[i].row != r || cells[i].kind != CELL_CHAR) continue;
+      chars++;
+      ink += ch_adv(cells[i].ch);
+    }
+    int gap = 0;
+    if (chars > 1) {
+      int extra = (DISPLAY_WIDTH - key_x0) - ink;
+      if (extra > 0) gap = extra / (chars - 1);
+    }
+    int x = key_x0;
     for (int i = 0; i < n; i++) {
       if (cells[i].row != r) continue;
       if (cells[i].kind != CELL_CHAR) {
         const char *label = cells[i].label ? cells[i].label : "";
         display_draw_text_small(buf, 4, y, label);
         if (i == edit->sel) {
-          int ink = display_text_width_small(label);
-          if (ink < 3) ink = 3;
-          display_invert_rect(buf, 3, y - 1, ink + 2, FONT_SMALL_H + 1);
+          int ink_w = display_text_width_small(label);
+          if (ink_w < 3) ink_w = 3;
+          display_invert_rect(buf, 3, y - 1, ink_w + 2, FONT_SMALL_H + 1);
         }
         continue;
       }
       char lab[2] = {cells[i].ch, 0};
+      int adv = ch_adv(cells[i].ch);
       display_draw_text_small(buf, x, y, lab);
-      if (i == edit->sel) {
-        int ink = 3;
-        int pad = pitch > ink + 2 ? 1 : 0;
-        display_invert_rect(buf, x - pad, y - 1, ink + pad * 2, FONT_SMALL_H + 1);
-      }
-      x += pitch;
+      if (i == edit->sel) display_invert_rect(buf, x, y - 1, adv, FONT_SMALL_H + 1);
+      x += adv + gap;
     }
   }
   for (int y = 32; y <= 63; y++) display_set_pixel(buf, 30, y, true);

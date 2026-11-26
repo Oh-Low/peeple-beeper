@@ -1,8 +1,8 @@
 # Radio protocol
 
-Peeple Beeper is a 128×64 FSTN LoRa pager. Firmware is C and runs in a desktop emulator and, later, on the board. Two nearby units can pair, send a short encrypted page, get a receipt, and have neighbors hop that page a couple of hops when the destination is out of direct range.
+Peeple Beeper is a 128×64 FSTN LoRa pager. Firmware is C. It runs in the desktop bench and on the Feather image today. The RP2350 and ESP32 boards have schematics and no firmware image in this tree. Two nearby units can pair, send a short encrypted page, get a receipt, and have neighbors hop that page a couple of hops when the destination is out of direct range.
 
-This file is the app-layer protocol: frame layouts, sizes, crypto, pairing, paging, and mesh relay. Implementation lives in C under `firmware/src` (`frames.c`, `pair.c`, `message.c`, `crypto.c`). Hardware, the HAL, firmware tick/UI, and how the pieces fit together are in [hardware.md](hardware.md), [hal.md](hal.md), [firmware-app.md](firmware-app.md), and [architecture.md](architecture.md).
+This file is the app-layer protocol: frame layouts, sizes, crypto, pairing, paging, and mesh relay. Implementation lives in C under `firmware/src` (`frames.c`, `pair.c`, `message.c`, `crypto.c`). Hardware, the HAL, firmware tick/UI, and how the pieces fit together are in [hardware.md](feather.md), [hal.md](hal.md), [firmware-app.md](firmware-app.md), and [architecture.md](architecture.md).
 
 **Frame version is 1.** The maximum raw air frame is **128 bytes**.
 
@@ -42,7 +42,7 @@ This document is the **app layer** sitting on that pipe:
 | XOR seal + truncated MAC | Collision handling, airtime |
 | Mesh relay (`hop_ttl`, jitter) | Pinouts, legal/regulatory limits |
 
-The emulator delivers every in-range TX to every in-range RX with **no collisions, no CAD, no loopback**. Firmware paging does not implement those PHY behaviors either. See [hardware.md](hardware.md) for the radio as a device, and [hal.md](hal.md) for `radio_send_raw` / `radio_poll_raw`.
+The emulator delivers every in-range TX to every in-range RX with **no collisions, no CAD, no loopback**. Firmware paging does not implement those PHY behaviors either. See [hardware.md](feather.md) for the radio as a device, and [hal.md](hal.md) for `radio_send_raw` / `radio_poll_raw`.
 
 ---
 
@@ -78,7 +78,7 @@ id_lo || id_hi || eph_of_lo || eph_of_hi
 
 ### Inbox, outbox, clocks
 
-Inbox and outbox each keep up to **256** rows (`PAGE_KEEP_MAX` in `pager.h`). Each row stores a **local HH:MM** from `hal->clock` at the event (received, sent, ACK’d). Those times are **not on the air**. `255` (`CLOCK_NONE`) means “not yet ACK’d” on an outbox row.
+Inbox and outbox each keep up to **256** rows (`PAGE_KEEP_MAX` in `screen.h`). Each row stores a **local HH:MM** from `hal->clock` at the event (received, sent, ACK’d). Those times are **not on the air**. `255` (`CLOCK_NONE`) means “not yet ACK’d” on an outbox row.
 
 The whole NVM snapshot must fit in 100 KB. If a save would overflow, firmware drops oldest **inbox** rows first, then oldest **outbox**. In-flight outbox rows restore as **failed** (retryable) because TX/retry RAM is not part of the store.
 
@@ -352,7 +352,7 @@ When tracking asks, the target sends nothing until the user picks Allow or Deny.
 
 ## 9. Host emulator range versus firmware
 
-The host (`firmware/host/mesh.c`) places units on the **east/north foot grid**. A hop exists only if the straight-line distance is under 100 ft (`RADIO_RANGE_FT`). At **100 ft** the link is silent (no RX).
+The host (`bench/mesh.c`) places units on the **east/north foot grid**. A hop exists only if the straight-line distance is under 100 ft (`RADIO_RANGE_FT`). At **100 ft** the link is silent (no RX).
 
 RSSI is about **−30 dBm** at 0 ft, falling **60 dB** linearly across that span. Pairing still requires **≥ −45 dBm** on top of being in range, so two units can be in paging range on the emulator and still fail to pair.
 

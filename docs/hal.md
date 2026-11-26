@@ -1,8 +1,8 @@
 # Hardware abstraction layer (HAL)
 
-Firmware talks **only** to the HAL. It never includes SDL, stdio NVM paths, or LoRa driver APIs. The contract is `hal/hal.h`. `hal/emu` is the RAM HAL for tests and the emulator. `hal/beeper` is the beeper board; `beeper_hal.c` there is a stub that must compile (`make nrf-check`). A real nRF52840 + SX1262 board fills the same `hal_t` function table.
+Firmware talks **only** to the HAL. It never includes SDL, stdio NVM paths, or LoRa driver APIs. The contract is `hal/hal.h`. `hal/ram` is the RAM HAL for tests and the bench. `hal/feather` is the Feather nRF52840 image: `feather_hal.c` is the table, and `feather_board.c` drives the pins (`make feather`). `make check-feather` compiles that table without the pin file. The RP2350 board (v3) and the ESP32 board (v2) have schematics and no firmware image yet. Pin notes for the RP2350 port are in [rp2350-bringup.md](rp2350-bringup.md).
 
-See also: [architecture](architecture.md), [firmware app](firmware-app.md), [hardware](hardware.md), [radio protocol](radio-protocol.md).
+See also: [architecture](architecture.md), [firmware app](firmware-app.md), [Feather breadboard](feather.md), [radio protocol](radio-protocol.md).
 
 ---
 
@@ -11,15 +11,15 @@ See also: [architecture](architecture.md), [firmware app](firmware-app.md), [har
 A **function table plus context pointer**. C firmware calls `hal->foo(hal->ctx, ...)`. Firmware **polls**. The host (or a future RTOS tick) calls `beeper_tick`; that tick asks the HAL “anything new?” and returns.
 
 ```
-  Emulator timer / test harness        beeper board tick
+  Bench timer / test harness           Feather tick
             |                                |
             v                                v
-        hal/emu                           hal/beeper
+        hal/ram                           hal/feather
             \                                /
              \------ hal_t / hal/hal.h -----/
                           |
                     firmware/src
-              (beeper, pager, page, pair, store)
+              (beeper, screen, message, pair, store)
 ```
 
 Host-only hooks (`emu_hal_push_encoder`, `emu_hal_push_raw`, `on_tx_raw`, …) are **not** HAL. Firmware cannot see them.
@@ -61,9 +61,9 @@ Index is `(y >> 3) * 128 + x`, bit `1 << (y & 7)`.
 
 ## Two HALs in-tree
 
-**RAM HAL** (`hal/emu`): queues for encoder, back, and raw RX, an NVM blob, LCG `random_fill`, `on_tx_raw` for the desktop mesh. Used by `make test` and `make emu`.
+**RAM HAL** (`hal/ram`): queues for encoder, back, and raw RX, an NVM blob, LCG `random_fill`, `on_tx_raw` for the desktop mesh. Used by `make test` and `make bench`.
 
-**Feather** (`hal/beeper`): `beeper_hal.c` is the `hal_t` table. `board.c` is linked only by `make beeper`. Host builds keep the weak hooks, so `now_ms` stays 0, `nvm_load` returns empty, and `radio_poll` returns nothing. On the Feather the glass, knob, Back, clock, RNG, GPS UART, compass, radio, and the battery divider are live. `radio_send_raw` transmits. Whisper is −9 dBm and a page is +14 dBm. Beep toggles **D2** at 4 kHz for the requested milliseconds. **A5** is held low and goes high for a vibe. `beeper_gps_push_byte` still feeds `nmea_push_byte`.
+**Feather** (`hal/feather`): `feather_hal.c` is the `hal_t` table. `feather_board.c` is linked only by `make feather`. Host builds keep the weak hooks, so `now_ms` stays 0, `nvm_load` returns empty, and `radio_poll` returns nothing. On the Feather the glass, knob, Back, clock, RNG, GPS UART, compass, radio, and the battery divider are live. `radio_send_raw` transmits. Whisper is −9 dBm and a page is +14 dBm. Beep toggles **D2** at 4 kHz for the requested milliseconds. **A5** is held low and goes high for a vibe. `feather_gps_push_byte` still feeds `nmea_push_byte`.
 
 ### GPS fix
 
@@ -101,7 +101,7 @@ Firmware schedules work with `now_ms()` deadlines. It must **return** and wait f
 
 ## Radio
 
-`radio_send_raw` copies (truncates to `RAW_FRAME_MAX`) and transmits. No loopback. The RAM HAL then calls `on_tx_raw` if the air mesh attached it. `firmware/host/mesh.c` fans TX out to in-range peers with `emu_hal_push_raw`. Range is host-only.
+`radio_send_raw` copies (truncates to `RAW_FRAME_MAX`) and transmits. No loopback. The RAM HAL then calls `on_tx_raw` if the air mesh attached it. `bench/mesh.c` fans TX out to in-range peers with `emu_hal_push_raw`. Range is host-only.
 
 ---
 
@@ -109,6 +109,6 @@ Firmware schedules work with `now_ms()` deadlines. It must **return** and wait f
 
 ```
 make test
-make emu
-make nrf-check
+make bench
+make check-feather
 ```

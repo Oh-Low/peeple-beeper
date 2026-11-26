@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DIR = ROOT / "docs" / "BEEPLE PNG"
+DEFAULT_DIR = ROOT / "art" / "mascots"
 BEEPLE_C = ROOT / "firmware" / "art" / "beeple.c"
 BEEPLE_H = ROOT / "firmware" / "include" / "beeple.h"
 SIZE = 64
@@ -168,7 +168,7 @@ def write_catalog(rows):
 
 def main(argv):
     parser = argparse.ArgumentParser(description="Convert Beeple PNGs into 64×64 firmware art.")
-    parser.add_argument("pngs", nargs="*", type=Path, help="PNG files (default: docs/BEEPLE PNG)")
+    parser.add_argument("pngs", nargs="*", type=Path, help="PNG files (default: art/mascots)")
     parser.add_argument("--write", action="store_true", help="update art.h, art.c, beeple.c, and beeple.h")
     args = parser.parse_args(argv)
     packer = load_packer()

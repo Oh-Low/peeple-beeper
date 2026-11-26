@@ -2,7 +2,7 @@
 
 How one beeper looks and behaves: screens, knob, inbox/outbox, pairing UX, identity, canned messages, local timestamps, and the NVM blob.
 
-Wire bytes, HELLO/PAGE crypto, and retry timing live in [radio-protocol.md](radio-protocol.md). Pins, radio, and the LCD hardware live in [hardware.md](hardware.md). The HAL contract is [hal.md](hal.md). How firmware sits next to the host emulator is [architecture.md](architecture.md).
+Wire bytes, HELLO/PAGE crypto, and retry timing live in [radio-protocol.md](radio-protocol.md). Pins, radio, and the LCD hardware live in [hardware.md](feather.md). The HAL contract is [hal.md](hal.md). How firmware sits next to the host emulator is [architecture.md](architecture.md).
 
 This is the document to read before you change a menu row, list drawing, or what gets saved.
 
@@ -83,7 +83,7 @@ Encoder **turn** is ignored on alert, read, pair, sending, sent, failed, outread
 | `alert` | Slanted `NEW BEEP` bar, sender, received time, wrapped message. The right half is the sender's Beeple. A contact with no Beeple yet keeps the spider. Full invert while flashing | `read` | `read` |
 | `pair` | ADD, countdown, `hold together`, RSSI, error | ignored | Abort whisper, Peeple on Add |
 | `settings` | Header `SETTINGS`. Names on the left of a 1 px rule, values on the right: BACK, NAME, TRACKING (`ask`/`open`), CLOCK BAT (`on`/`off`), TIME ZONE (`GMT`, `GMT-4`, `GMT+5`), DARK MODE (`on`/`off`), BACKLIGHT (`off`/`30s`/`1m`/`5m`/`on`), VIBE TEST (`on`/`off`), BEEP TEST (`on`/`off`). The cut-corner highlight covers the name only. Five rows show; a longer list scrolls | Name → `nameedit`; tracking toggles ask/open; CLOCK BAT toggles the menu clock; TIME ZONE press highlights the value and the knob steps the hour, from −12 through +14, starting at GMT; press or Back leaves that value; DARK MODE inverts every screen; BACKLIGHT press highlights the value and the knob steps off, 30s, 1m, 5m, and on; press or Back leaves that value; off holds the light off, on holds it on, and a time turns it off after that long with no touch; vibe test pulses a quarter second on and a quarter second off; beep holds a tone | Menu on Settings |
-| `beeple` | Left half: the mascots, five rows at a time. Right half: the highlighted one in the 64×64 slot. The pictures come from `docs/BEEPLE PNG` via `tools/beeple_to_art.py` | Save that Beeple and return to the menu | Menu on Beeple, choice unchanged |
+| `beeple` | Left half: the mascots, five rows at a time. Right half: the highlighted one in the 64×64 slot. The pictures come from `art/mascots` via `tools/beeple_to_art.py` | Save that Beeple and return to the menu | Menu on Beeple, choice unchanged |
 | `trackask` | Contact name, Allow / Deny (Deny selected) | Allow sends the fix; Deny sends a refusal | Deny |
 | `tracked` | Contact name, `is locating you` | Menu | Menu |
 | `locate` | Contact names, or `pair first` | Pick a contact → `locating` | Peeple (Locate) |
@@ -91,7 +91,7 @@ Encoder **turn** is ignored on alert, read, pair, sending, sent, failed, outread
 | `locread` | With a fix and a settled compass: distance, an arrow toward the target, and `You're looking:` plus the direction this beeper is facing. `hold flat`, `hold still`, `do not move`, `no sky`, `no reply`, `no own fix`, and `radio busy` are unchanged. Denied is `DENIED.` / `THIS IS` / `devastating.` | Contact list | Contact list |
 | `nameedit` | Textedit, no ♥ | OK saves name | Settings, name selected |
 
-Menu select indices: 0 Inbox, 1 Compose, 2 Outbox, 3 Peeple, 4 Settings, 5 Beeple. With Show Clock & Bat on, the clock and battery share the top row of the left half and the words use an 8 px pitch, and all six rows fit. The battery is a percent. While USB power is charging the cell, that corner also shows a rough time until full, such as `80% 3h` or `80% 40m`, in the small font. With it off, the words use a 10 px pitch and the clock stays off that screen, so Beeple scrolls in. The Peeple menu uses that same layout for Locate and Contact. The selected row is a bar with the bottom-right corner cut at 45 degrees, and it stops one pixel short of the picture. The picture is the saved Beeple (`screen_set_beeple`). Voidfarer is index 0 and starts selected. The choice is saved with the store. Settings rows (`SET_BACK` … `SET_BEEP`, count `SET_N`): BACK, NAME, TRACKING (`ask` or `open`), CLOCK BAT, TIME ZONE, DARK MODE, BACKLIGHT, VIBE TEST, BEEP TEST. TIME ZONE starts at GMT. Press highlights the value, the knob steps whole hours from −12 through +14, and press or Back leaves it. The menu clock, message stamps, and a locate time add that many hours to GPS time and wrap through midnight. Until a fix sentence arrives the clock shows `--:--`. Names are capitals in the 3×6 font and stay left of pixel 63. Values sit on the right. The selected name is a bar with the bottom-right corner cut at 45 degrees. `settings_scroll` keeps that row on screen; five rows fit, and further rows scroll. CLOCK BAT is saved with the store and starts on. DARK MODE is saved and starts off. When it is on, `screen_render` inverts the finished frame, so every screen flips. BACKLIGHT is saved and starts on. Press highlights the value. The knob steps off, 30s, 1m, 5m, and on, and press or Back leaves it. Off holds the light off. On holds it on. A timed choice turns the light on for that long after a knob turn, a press, Back, an incoming page, or a locate alert, then drives the pin low.
+Menu select indices: 0 Inbox, 1 Compose, 2 Outbox, 3 Peeple, 4 Settings, 5 Beeple. With Show Clock & Bat on, the clock and battery share the top row of the left half and the words use an 8 px pitch, and all six rows fit. The battery is a percent. While USB power is charging the cell, that corner also shows a rough time until full, such as `80% 3h` or `80% 40m`, in the small font. With it off, the words use a 10 px pitch and the clock stays off that screen, so Beeple scrolls in. The Peeple menu uses that same layout for Locate and Add. The selected row is a bar with the bottom-right corner cut at 45 degrees, and it stops one pixel short of the picture. The picture is the saved Beeple (`screen_set_beeple`). Voidfarer is index 0 and starts selected. The choice is saved with the store. Settings rows (`SET_BACK` … `SET_BEEP`, count `SET_N`): BACK, NAME, TRACKING (`ask` or `open`), CLOCK BAT, TIME ZONE, DARK MODE, BACKLIGHT, VIBE TEST, BEEP TEST. TIME ZONE starts at GMT. Press highlights the value, the knob steps whole hours from −12 through +14, and press or Back leaves it. The menu clock, message stamps, and a locate time add that many hours to GPS time and wrap through midnight. Until a fix sentence arrives the clock shows `--:--`. Names are capitals in the 3×6 font and stay left of pixel 63. Values sit on the right. The selected name is a bar with the bottom-right corner cut at 45 degrees. `settings_scroll` keeps that row on screen; five rows fit, and further rows scroll. CLOCK BAT is saved with the store and starts on. DARK MODE is saved and starts off. When it is on, `screen_render` inverts the finished frame, so every screen flips. BACKLIGHT is saved and starts on. Press highlights the value. The knob steps off, 30s, 1m, 5m, and on, and press or Back leaves it. Off holds the light off. On holds it on. A timed choice turns the light on for that long after a knob turn, a press, Back, an incoming page, or a locate alert, then drives the pin low.
 
 **Locate.** Empty book shows `pair first`. A locate starts even while a page is armed: the tick sends the locate and holds the page. `radio busy` is the screen when this locate is already sending. Otherwise, with tracking open, the contact turns the receiver on and replies after 7 seconds. A new lock in that window is what goes out; if none arrives, the last stored fix does. A unit set to `Tracking: ask` waits 5 seconds before the Allow / Deny screen and keeps the receiver on until one of those is chosen. Allow sends the newest lock, or the last stored fix, and for 30 minutes answers later requests from that contact with no new prompt. Deny answers with no coordinates and the requester shows `denied`. Back on that prompt denies. Open tracking warns the target after 5 seconds: the screen says the contact `is locating you`. A repeat from the same contact inside 12 seconds of that warning does not raise it again. A device with no saved setting asks. Settings → Tracking switches `ask` and `open`. With both fixes the distance is whole feet (`75 ft`, or miles to one decimal at 1000 ft and up). The arrow waits on the compass. Tip past 20° and the screen says `hold flat`. Shake it, walk with it, or run the vibration motor and it says `hold still`. Held flat and still, it says `do not move` for 400 ms, then draws an 8-way arrow in the device frame: the top of the screen is whatever way the unit is facing. Under the distance, `Last Loc : HH:MM` is the target’s clock when it stored that fix, not when the reply arrived. Each unit powers the receiver for up to 60 seconds about every 30 minutes, stores one fix, and turns the receiver off. The first listen is at boot. A locate reply sends the lock from that wait, or the stored fix when the wait ends without one. No sky during a listen keeps the previous fix and its time. Leaving flat or still and settling again asks the target for that store. If that reply is missing, or the target has never stored a fix, the arrow stays on the previous target fix and the time does not change. This unit’s own arrow uses a live fix while the receiver is on, and the stored fix while it is off. Returning to flat and still turns the receiver on for one reading and stores that position before the arrow is drawn. Coordinates stay on the air and are not drawn. `no sky` means they have never stored a fix. `no own fix` has no arrow. `no reply` is four attempts, two seconds apart, then seven seconds. Back aborts a locate in progress. The result stays in RAM and is not written to the store.
 
@@ -150,7 +150,7 @@ Outbox status is the middle column: `Fail` when failed, `Retry` while sending, a
 
 ## Pairing UX vs protocol
 
-**What the user does:** set **Display name** (that string is what the peer stores), then **Contact** on both units, hold them together until the menu returns. The menu returns when the pair commits, including when that contact was already in the book. A repeat pair replaces the session key and still leaves the ADD screen.
+**What the user does:** set **Display name** (that string is what the peer stores), then **Add** on both units, hold them together until the menu returns. The menu returns when the pair commits, including when that contact was already in the book. A repeat pair replaces the session key and still leaves the ADD screen.
 
 **What the ADD screen shows:** seconds left in a **20 s** window, `hold together`, last RSSI, then `timeout` / `book full` / `ERROR: Try again`. Short vibe on start; longer vibe on success. Back calls `pair_abort` (whisper off).
 
@@ -192,13 +192,13 @@ On a new page (`screen_on_page`):
 - `alert` copy of the page, `flash_start` / `FLASH_MS` (400) for a full-buffer invert
 - Screen becomes `alert` unless you are on the leftover `sending` screen (then the page is still stored and the flash is armed, but the sending drawer stays)
 
-Settings **VIBE TEST** pulses the motor a quarter second on and a quarter second off while Settings is open. **BEEP TEST** holds `beep(250)` each render. Pressing BACK or NAME, or leaving Settings, stops both (`vibe(0)`, `beep(0)`).
+Settings **VIBE TEST** pulses the motor a quarter second on and a quarter second off while Settings is open. **BEEP TEST** holds `beep(65535)` while the test is armed and Settings is open. Pressing BACK or NAME, or leaving Settings, stops both (`vibe(0)`, `beep(0)`).
 
 ---
 
 ## Changing a menu safely
 
-Stay inside `firmware/src`. Call `hal->foo(hal->ctx, ...)` only — **no SDL, no files**. The emulator HAL lives in `hal/emu`. The desktop mesh lives in `firmware/host`. Tests may construct a RAM HAL; production pager code must not.
+Stay inside `firmware/src`. Call `hal->foo(hal->ctx, ...)` only — **no SDL, no files**. The emulator HAL lives in `hal/ram`. The desktop mesh lives in `bench`. Tests may construct a RAM HAL; production pager code must not.
 
 Checklist when you add/rename a menu row:
 
@@ -212,7 +212,7 @@ Do not encode selection as ASCII `>`. Keep invert-rect lists.
 
 **Tests to run or extend**
 
-- `firmware/tests/page_test.c` — `make test` — send/ACK, retries, fail. Outbox UI status follows this radio.
+- `firmware/tests/message_test.c` — `make test` — send/ACK, retries, fail. Outbox UI status follows this radio.
 - `firmware/tests/relay_test.c` — jitter, hop drop, already-sent.
 - `firmware/tests/store_test.c` — blob shape, canned persistence, in-flight → failed.
 - `firmware/tests/gps_test.c` — foot-grid quantization and RMC parse.
@@ -220,7 +220,7 @@ Do not encode selection as ASCII `>`. Keep invert-rect lists.
 - `firmware/tests/receiver_test.c` — receiver sleep.
 - `firmware/tests/locate_test.c` — locate reply, hop, no sky, tracking consent.
 - `firmware/tests/mesh_test.c` — RSSI and who hears whom inside 100 ft.
-- `firmware/tests/seed_test.c` — emulator directory (`emu/seed.c`).
+- `firmware/tests/seed_test.c` — emulator directory (`bench/seed.c`).
 - `firmware/tests/pair_test.c` — restarting a pair.
 
 ---
@@ -256,8 +256,8 @@ Do not encode selection as ASCII `>`. Keep invert-rect lists.
 | `PAGE_BODY_MAX` | 79 | page body |
 | `NVM_BYTES` | 100 KB | store partition |
 | `CONTACTS_MAX` | 256 | `contacts.h` |
-| `PAGE_KEEP_MAX` | 256 | `pager.h` inbox and outbox |
-| `CLOCK_NONE` | 255 | `pager.h` |
+| `PAGE_KEEP_MAX` | 256 | `screen.h` inbox and outbox |
+| `CLOCK_NONE` | 255 | `screen.h` |
 | `CANNED_SAVED_MAX` | 16 | `canned.h` (persisted) |
 | `PAIR_WINDOW_MS` | 20 000 | `pair.h` |
 | `PAIR_RSSI_MIN` | −45 dBm | `pair.h` |
@@ -274,5 +274,5 @@ Do not encode selection as ASCII `>`. Keep invert-rect lists.
 
 - [architecture.md](architecture.md) — firmware vs emulator vs board HAL
 - [hal.md](hal.md) — what firmware may call
-- [hardware.md](hardware.md) — board, LCD, encoder, radio, GPS, heading
+- [hardware.md](feather.md) — board, LCD, encoder, radio, GPS, heading
 - [radio-protocol.md](radio-protocol.md) — HELLO/PAGE bytes, crypto, retries, relay

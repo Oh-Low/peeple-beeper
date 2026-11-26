@@ -1,8 +1,8 @@
 # Architecture
 
-Peeple Beeper firmware is C under `firmware/`. It talks only to a HAL (`hal/hal.h`). Implementations live under `hal/`, one directory per machine: `hal/emu` for tests and the desktop emulator, `hal/beeper` for the beeper board. `firmware/host/` is the desktop foot-grid mesh, not a HAL.
+Peeple Beeper firmware is C under `firmware/`. It talks only to a HAL (`hal/hal.h`). Implementations live under `hal/`, one directory per machine: `hal/ram` for tests and the desktop emulator, `hal/feather` for the beeper board. `bench/` is the desktop foot-grid mesh, not a HAL.
 
-There is no second pager in TypeScript. Host code is an SDL2 window, `hal/emu`, and the foot-grid mesh.
+There is no second pager in TypeScript. Host code is an SDL2 window, `hal/ram`, and the foot-grid mesh.
 
 ---
 
@@ -12,11 +12,11 @@ The host never implements pairing or PAGE crypto. Firmware never knows about SDL
 
 ```mermaid
 flowchart TB
-  subgraph host ["Host — emu/ + firmware/host"]
+  subgraph host ["Host — bench/"]
     UI["SDL2 bench / tests"]
-    HALImpl["hal/emu/emu_hal.c"]
-    Air["firmware/host/mesh.c"]
-    Seed["emu/seed.c contact directory"]
+    HALImpl["hal/ram/emu_hal.c"]
+    Air["bench/mesh.c"]
+    Seed["bench/seed.c contact directory"]
   end
   subgraph fw ["C firmware — firmware/src"]
     Beeper["beeper.c composition root"]
@@ -43,24 +43,30 @@ Tick order, frame types, and crypto are in [firmware-app.md](firmware-app.md) an
 | Path | Role |
 |------|------|
 | `hal/hal.h` | HAL contract (`hal_t` ops + `ctx`). Shared. Not an implementation. |
-| `hal/emu/` | RAM HAL for tests and the desktop emulator. |
-| `hal/beeper/` | Feather board HAL. `make beeper` links `board.c`. `sx1262_setup.c` is the modem command list, also linked into `make bringup`. `make nrf-check` compiles the table without either. |
+| `hal/ram/` | RAM HAL for tests and the desktop emulator. |
+| `hal/feather/` | Feather board HAL. `make feather` links `feather_board.c`. `sx1262_setup.c` is the modem command list, also linked into `make bringup`. `make check-feather` compiles the table without `feather_board.c` or `sx1262_setup.c`. |
 | `firmware/include/beeper.h` | `beeper_init` / `tick` / `reset` / `debug_key`. |
 | `firmware/src/*.c` | Screen, message session, pair, locate, store, display, crypto, frames. |
-| `firmware/host/` | Desktop foot-grid and RSSI (`mesh.c`) only. Tests and the emulator. |
-| `firmware/art/` | Generated 1-bit picture bytes (`art.c`). |
-| `firmware/tests/` | `page_test`, `relay_test`, `store_test`, `screen_test`, `mesh_test`, `seed_test`, `pair_test`, `gps_test`, `heading_test`, `receiver_test`, `locate_test`. |
-| `emu/` | SDL2 window + `seed.c` host directory. |
-| `Makefile` | `make test`, `make emu`, `make nrf-check`, `make bringup`, `make beeper`. |
-| `docs/` | This map and protocol/app/HAL notes. |
+| `bench/` | SDL window, font, seed, and the foot-grid mesh (`mesh.c`). Tests and the bench. Not linked into the Feather image. |
+| `firmware/art/` | Generated 1-bit picture bytes (`art.c`, `beeple.c`). |
+| `firmware/tests/` | `message_test`, `relay_test`, `store_test`, `screen_test`, `mesh_test`, `seed_test`, `pair_test`, `gps_test`, `heading_test`, `receiver_test`, `locate_test`. |
+| `Makefile` | `make test`, `make bench`, `make check-feather`, `make bringup`, `make feather`. |
+| `docs/` | Specs for the shared firmware, the Feather breadboard, the RP2350 board, and the ESP32 board. `docs/reviews/` is session history. |
+| `art/` | Mascot PNGs and screen pictures. |
+| `hardware/feather-carrier/` | Feather carrier schematic. |
+| `hardware/rp2350/` | v3 RP2354A schematic. No layout yet. |
+| `hardware/esp32/` | v2 ESP32-S3 schematic and layout. |
+| `hardware/archive/` | Older ESP32 placement. |
+| `hal/rp2350/` | Empty until an RP2350 image exists. |
+| `hal/esp32/` | Empty until an ESP32 image exists. |
 | `tools/png_to_art.py` | Any PNG to a 1-bit C array. |
 | `tools/beeple_to_art.py` | Mascot PNGs into `firmware/art`. |
 
-A new `.c` file goes in the directory of its kind. Product logic stays in `firmware/src`. The desktop mesh stays in `firmware/host`. Generated picture bytes stay in `firmware/art`.
+A new `.c` file goes in the directory of its kind. Product logic stays in `firmware/src`. The desktop mesh stays in `bench`. Generated picture bytes stay in `firmware/art`.
 
-Every HAL file is named for its machine: `hal/emu/emu_hal.c` and `hal/beeper/beeper_hal.c`. A new machine gets `hal/<machine>/<machine>_hal.c` and implements `hal/hal.h`. It does not go in `firmware/src` or `firmware/host`.
+Every HAL file is named for its machine: `hal/ram/emu_hal.c` and `hal/feather/feather_hal.c`. A new machine gets `hal/<machine>/<machine>_hal.c` and implements `hal/hal.h`. It does not go in `firmware/src` or `bench`.
 
-`firmware/host/mesh.c` is the desktop range model: feet and RSSI. The packet path is `frames.c` (byte layout), `crypto.c` (SHA-256 constructions), and `relay.c` (the forward cache). Frame layout, seals, and hop policy do not go in `mesh.c`.
+`bench/mesh.c` is the desktop range model: feet and RSSI. The packet path is `frames.c` (byte layout), `crypto.c` (SHA-256 constructions), and `relay.c` (the forward cache). Frame layout, seals, and hop policy do not go in `mesh.c`.
 
 ---
 
@@ -72,7 +78,7 @@ A change lands in the file that already owns that decision. When two files would
 
 | Decision | Owner | What stays outside |
 |----------|--------|-------------------|
-| SX1262 modem command list: 915 MHz, SF7, 125 kHz, 4/5, 64-symbol preamble, TCXO on DIO3 | `hal/beeper/sx1262_setup.c` | Pins, SPI, and the wire-test glass stay in their own images. A send passes its own payload length. The pager's 28 ms / 32 ms sniff lives in `board.c`, which passes timeout mask `0x00`. The wire test passes `0x02`. |
+| SX1262 modem command list: 915 MHz, SF7, 125 kHz, 4/5, 64-symbol preamble, TCXO on DIO3 | `hal/feather/sx1262_setup.c` | Pins, SPI, and the wire-test glass stay in their own images. A send passes its own payload length. The pager's 28 ms / 32 ms sniff lives in `feather_board.c`, which passes timeout mask `0x00`. The wire test passes `0x02`. |
 | Wire layout of every frame | `frames.c` | Sessions call encode and decode. |
 | SHA-256 session key, seal, ack tag, locate tag | `crypto.c` | Sessions pass bytes in. |
 | Attempt loop for a sealed send: nonce list, attempt count, next-send time, accept a reply only from that peer on a stored nonce while the send is in flight | `attempt.c`. A page is nine tries, ten seconds then a minute. A locate is four tries, two seconds apart. The screen asks the session whether the first wait has elapsed. | Text, mascot, fix, denial, and no-sky stay in the session that owns them. `message.c` and `locate.c` stay two files. |
@@ -84,7 +90,7 @@ A change lands in the file that already owns that decision. When two files would
 | Foot grid, arcminutes, distance | `gps.c` | |
 | Mascot index, menu label, and bitmap | `beeple.h` is the index. `firmware/art/beeple.c` is the name and pixel catalog. The screen asks `beeple_at`. | `png_to_art.py` packs any PNG. `beeple_to_art.py` writes the bytes and the catalog. Arrows and side decorations are sprites in `art.c`. They are separate from mascot indexes. |
 
-`display.c`, `textedit.c`, `canned.c`, `store.c`, and `emu/font.c` are already one concept each. The bench font is the SDL atlas for the window chrome. The panel font is the 5×7 and 3×6 bitmaps in `display.c`. Leave them apart. Folding `frames.c` or `crypto.c` into a session would put the wire format in whichever session was nearest.
+`display.c`, `textedit.c`, `canned.c`, `store.c`, and `bench/font.c` are already one concept each. The bench font is the SDL atlas for the window chrome. The panel font is the Tiny5 bitmaps in `display.c`. Leave them apart. Folding `frames.c` or `crypto.c` into a session would put the wire format in whichever session was nearest.
 
 ---
 
@@ -113,7 +119,7 @@ The emulator wraps each unit with an `emu_hal_t`, a name (`A`, `B`, …), and an
 
 Radios sit on the east/north foot grid. A hop exists only if the straight-line distance is under 100 ft (`RADIO_RANGE_FT`). RSSI is about −30 dBm at 0 ft and falls ~60 dB across that span; at 100 ft the link is silent (no `push_raw`). There is **no collision model**. Firmware paging does not gate on RSSI; pairing still requires ≥ −45 dBm.
 
-The host also seeds contact books (`emu/seed.c`) so every unit can Compose to every other without walking HELLO. That seeding is host-only. It is not a frame kind.
+The host also seeds contact books (`bench/seed.c`) so every unit can Compose to every other without walking HELLO. That seeding is host-only. It is not a frame kind.
 
 ---
 
@@ -132,7 +138,7 @@ The host also seeds contact books (`emu/seed.c`) so every unit can Compose to ev
 
 ```
 make test
-make emu
+make bench
 ./build/peeple-emu
 ```
 
@@ -140,7 +146,7 @@ A test file is named for the decision it pins. A new proof of a decision goes in
 
 | Before changing | Run |
 |-----------------|-----|
-| Page session, ack, frames, page crypto | `page_test` |
+| Page session, ack, frames, page crypto | `message_test` |
 | Forward cache: jitter, hop drop, already-sent | `relay_test` |
 | Locate session, Allow/Deny, tracking warning | `locate_test` |
 | Foot grid and RMC | `gps_test` |
@@ -152,7 +158,7 @@ A test file is named for the decision it pins. A new proof of a decision goes in
 | NVM blob round-trip, including the storage-budget guard | `store_test` |
 | Backlight timer, and leaving a grabbed settings value | `screen_test` |
 
-**HAL-only firmware.** Production files under `firmware/src` and `firmware/art` must not assume SDL or files. They call `hal->foo(hal->ctx, ...)`. They include `hal/hal.h` and no file under `hal/emu` or `hal/beeper`. The desktop mesh lives in `firmware/host`.
+**HAL-only firmware.** Production files under `firmware/src` and `firmware/art` must not assume SDL or files. They call `hal->foo(hal->ctx, ...)`. They include `hal/hal.h` and no file under `hal/ram` or `hal/feather`. The desktop mesh lives in `bench`.
 
 ---
 
@@ -167,6 +173,6 @@ A test file is named for the decision it pins. A new proof of a decision goes in
 ## Further reading
 
 - [radio-protocol.md](radio-protocol.md) — HELLO through PAGE_ACK, crypto, relay.
-- [hardware.md](hardware.md) — intended pager hardware.
+- [hardware.md](feather.md) — intended pager hardware.
 - [hal.md](hal.md) — display buffer, encoder, raw radio, NVM.
 - [firmware-app.md](firmware-app.md) — tick, screens, store.

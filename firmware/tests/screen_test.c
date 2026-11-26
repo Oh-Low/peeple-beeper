@@ -181,7 +181,7 @@ static void test_alert_keeps_chirp(void) {
   b.screen.beep_test = true;
   ram.vibe_ms = 250;
   ram.beep_ms = 250;
-  b.radio.status = MESSAGE_DELIVERED;
+  b.message.status = MESSAGE_DELIVERED;
   screen_poll_send(&b.screen, &hal);
   screen_render(&b.screen, &hal);
   CHECK(b.screen.mode == SCREEN_SENT, "a delivery leaves settings");

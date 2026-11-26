@@ -14,7 +14,7 @@ typedef struct {
   identity_store_t identity;
   contact_book_t contacts;
   pair_session_t pair;
-  message_session_t radio;
+  message_session_t message;
   locate_radio_t locate;
   screen_t screen;
   bool nvm_ready;

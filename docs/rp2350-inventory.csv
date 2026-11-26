@@ -1,0 +1,52 @@
+Refs,Part,Order / SKU,Vendor,Need,Buy,Qty ordered,Qty received,Status,Unit $,Ext $,Reorder URL,Notes
+(off-board cell),LiPo 2000 mAh 103450 PH 2.0 2-pin,3256811808497990 / WHITECRANE,AliExpress,10,10,10,0,In delivery,1.80,18.00,https://www.aliexpress.us/item/3256811808497990.html,Off-board. Ordered at $1.80. Check polarity before J2 (pin 1 = +). ~10×34×50 mm
+M1,Coin motor JYC1027,5101-JYC1027-ND,DigiKey,10,10,0,0,Not ordered,1.24,12.36,https://www.digikey.com/en/products/detail/jie-yi-electronics-limited/JYC1027/20193265,Wire leads; 10×2.7 mm
+SW1,Encoder PEC11R-4220F-S0024,PEC11R-4220F-S0024-ND,DigiKey,10,10,0,0,Not ordered,1.79,17.92,https://www.digikey.com/en/products/detail/bourns-inc./PEC11R-4220F-S0024/4499660,24 PPR with push
+L3,Core inductor AOTA-B201610S3R3-101-T 3.3 µH,535-AOTA-B201610S3R3-101-TCT-ND,DigiKey,10,10,0,0,Not ordered,0.18,1.76,https://www.digikey.com/en/products/detail/abracon-llc/AOTA-B201610S3R3-101-T/25621527,Buy cut tape (CT) not reel. Dot toward VREG_LX
+U4,HT-RA62 radio 915 MHz,ZC-144-915,Heltec,10,10,0,0,Not ordered,3.90,39.00,https://heltec.org/project/ht-ra62/,Select 915 MHz on product page
+(off-board glass),ERC12864FSF-9 screen glass,ERC12864FSF-9,BuyDisplay,10,10,0,0,Not ordered,2.12,21.20,https://www.buydisplay.com/1-7-inch-low-cost-white-128x64-graphic-cog-lcd-display-st7567-spi,Off-board glass; plugs into J3
+J3,14-pin 1.0 mm ZIF (Molex 200528-0140 class),option on glass page,BuyDisplay,10,10,0,0,Not ordered,0.16,1.60,https://www.buydisplay.com/1-7-inch-low-cost-white-128x64-graphic-cog-lcd-display-st7567-spi,Add ZIF in dropdown with glass
+U1,RP2354A MCU,C41378174,LCSC,10,10,0,0,Not ordered,1.25,12.50,https://www.lcsc.com/product-detail/C41378174.html,QFN-60; needs stencil+hotplate
+Y1,ABM8-272-T3 12 MHz crystal,C20625731,LCSC,10,10,0,0,Not ordered,0.51,5.10,https://www.lcsc.com/product-detail/C20625731.html,
+J1,TYPE-C-31-M-12 USB-C jack,C165948,LCSC,10,10,0,0,Not ordered,0.19,1.90,https://www.lcsc.com/product-detail/C165948.html,
+U8,USBLC6-2SC6 USB ESD,C2827654,LCSC,10,10,0,0,Not ordered,0.05,0.50,https://www.lcsc.com/product-detail/C2827654.html,
+U2,TP4054 Li-ion charger,C668215,LCSC,10,10,0,0,Not ordered,0.04,0.40,https://www.lcsc.com/product-detail/C668215.html,
+U3,TLV62568DBVR 3.3 V buck,C163219,LCSC,10,10,0,0,Not ordered,0.08,0.80,https://www.lcsc.com/product-detail/C163219.html,
+L1,FNR4030S2R2MT 2.2 µH buck inductor,C167869,LCSC,10,10,0,0,Not ordered,0.05,0.50,https://www.lcsc.com/product-detail/C167869.html,
+D2,B5819W Schottky (USB to VSYS),C2943878,LCSC,10,10,0,0,Not ordered,0.02,0.20,https://www.lcsc.com/product-detail/C2943878.html,
+"Q2, Q3",AO3401A (GPS switch + cell to VSYS),C15127,LCSC,20,20,0,0,Not ordered,0.10,2.00,https://www.lcsc.com/product-detail/C15127.html,2 per board
+AE1,T1-915M antenna,C726086,LCSC,10,10,0,0,Not ordered,0.24,2.40,https://www.lcsc.com/product-detail/C726086.html,
+U5,ATGM336H-5NR32-G GPS module,C49233943,LCSC,10,10,0,0,Not ordered,1.68,16.80,https://www.lcsc.com/product-detail/C49233943.html,
+(off-board patch),BWGPSCNX8-8B1 GPS active patch,C496567,LCSC,10,10,0,0,Not ordered,1.70,17.00,https://www.lcsc.com/product-detail/C496567.html,Off-board IPEX patch → J5
+J5,U.FL-R-SMT-1(80) GPS antenna jack,C88374,LCSC,10,10,0,0,Not ordered,0.12,1.20,https://www.lcsc.com/product-detail/C88374.html,
+L4,LQW18AN47NG00D 47 nH GPS bias,C98076,LCSC,10,10,0,0,Not ordered,0.04,0.40,https://www.lcsc.com/product-detail/C98076.html,
+U6,SC7A20HTR accelerometer,C19274408,LCSC,10,10,0,0,Not ordered,0.24,2.40,https://www.lcsc.com/product-detail/C19274408.html,LGA-12; stencil+hotplate
+U7,QMC5883P magnetometer,C2847467,LCSC,10,10,0,0,Not ordered,1.42,14.20,https://www.lcsc.com/product-detail/C2847467.html,LGA-16; stencil+hotplate
+Q1,BSS138 backlight switch,C78284,LCSC,10,10,0,0,Not ordered,0.02,0.20,https://www.lcsc.com/product-detail/C78284.html,
+"SW2, SW3, SW4",TS-1187A-B-A-B tactile (Back BOOTSEL RESET),C318884,LCSC,30,50,0,0,Not ordered,0.02,1.00,https://www.lcsc.com/product-detail/C318884.html,Need 30; buy 50
+U9,SRV05-4 encoder/button ESD,C558418,LCSC,10,10,0,0,Not ordered,0.03,0.30,https://www.lcsc.com/product-detail/C558418.html,
+Q4,AO3400A motor switch,C20917,LCSC,10,10,0,0,Not ordered,0.09,0.90,https://www.lcsc.com/product-detail/C20917.html,
+D1,1N4148W motor flyback,C81598,LCSC,10,10,0,0,Not ordered,0.01,0.10,https://www.lcsc.com/product-detail/C81598.html,
+BZ1,GSC1030RB-3V4000 piezo,C255330,LCSC,10,10,0,0,Not ordered,0.49,4.90,https://www.lcsc.com/product-detail/C255330.html,SMD 10×10 mm; 4 kHz resonance
+J2,PH-2PWB cell header,C2905019,LCSC,10,10,0,0,Not ordered,0.03,0.30,https://www.lcsc.com/product-detail/C2905019.html,Pin 1 = +
+D3,NCD0805R1 charge LED,C84256,LCSC,10,10,0,0,Not ordered,0.01,0.10,https://www.lcsc.com/product-detail/C84256.html,
+J4,1×40 2.54 mm header (cut to SWD),C2337,LCSC,1,1,0,0,Not ordered,0.16,0.16,https://www.lcsc.com/product-detail/C2337.html,One strip → ~13× 3-pin SWD
+"R3, R4",5.1 kΩ 0805,C27834,LCSC,20,100,0,0,Not ordered,0.0056,0.56,https://www.lcsc.com/product-detail/C27834.html,USB-C CC1/CC2; 100-pc bag
+"R19, R20",27 Ω 0603,C25190,LCSC,20,100,0,0,Not ordered,0.0021,0.21,https://www.lcsc.com/product-detail/C25190.html,USB D+/D− series; 100-pc bag
+"R6, R9, R16, R17, R21, R23",100 kΩ 0805,C149504,LCSC,60,100,0,0,Not ordered,0.0060,0.60,https://www.lcsc.com/product-detail/C149504.html,"Buck FB bottom; GPS_PWR_N; cell divider; Q3 gate; VBUS detect top. 6/board → need 60; 100-pc bag"
+R22,150 kΩ 0805,C17470,LCSC,10,100,0,0,Not ordered,0.0049,0.49,https://www.lcsc.com/product-detail/C17470.html,VBUS detect bottom; 100-pc bag
+"C2, C8, C9, C27, C29, C30, C31, C32, C33, C35, C36, C37, C38",100 nF 0805,C49678,LCSC,130,200,0,0,Not ordered,0.0139,2.78,https://www.lcsc.com/product-detail/C49678.html,"VBUS/BAT_ADC/radio/GPS/sensors/screen/buttons + extras in shopping qty. Need 130; 200-pc bag"
+"C1, C5, C6, C7, C26, C28",10 µF 0805,C15850,LCSC,60,100,0,0,Not ordered,0.0692,6.92,https://www.lcsc.com/product-detail/C15850.html,"VBUS; VSYS/+3V3 buck; radio; GPS_VCC. Need 60; 100-pc bag"
+R7,2 kΩ 0805,C17604,LCSC,10,100,0,0,Not ordered,0.0039,0.39,https://www.lcsc.com/product-detail/C17604.html,Charger PROG 500 mA; 100-pc bag
+"R8, R18",1 kΩ 0805,C17513,LCSC,20,100,0,0,Not ordered,0.0035,0.35,https://www.lcsc.com/product-detail/C17513.html,Charge LED + GPS RXD series; 100-pc bag
+"C3, C4, C34",4.7 µF 0805,C1779,LCSC,30,100,0,0,Not ordered,0.0348,3.48,https://www.lcsc.com/product-detail/C1779.html,Charger VBUS/BAT + QMC5883P C1; 100-pc bag
+R5,453 kΩ 0805,C17702,LCSC,10,100,0,0,Not ordered,0.0049,0.49,https://www.lcsc.com/product-detail/C17702.html,Buck feedback top; 100-pc bag
+R1,33 Ω 0603,C23140,LCSC,10,100,0,0,Not ordered,0.0025,0.25,https://www.lcsc.com/product-detail/C23140.html,VREG_AVDD filter; 100-pc bag
+"C21, C22, C23",4.7 µF 0603,C69335,LCSC,30,100,0,0,Not ordered,0.0425,4.25,https://www.lcsc.com/product-detail/C69335.html,VREG_VIN / +1V1 / VREG_AVDD; 100-pc bag
+"C10, C11, C12, C13, C14, C15, C16, C17, C18, C19, C20",100 nF 0603,C14663,LCSC,110,200,0,0,Not ordered,0.0141,2.82,https://www.lcsc.com/product-detail/C14663.html,U1 supply decoupling; need 110; 200-pc bag
+"R2, R13",1 kΩ 0603,C21190,LCSC,20,100,0,0,Not ordered,0.0020,0.20,https://www.lcsc.com/product-detail/C21190.html,BOOTSEL + crystal drive; 100-pc bag
+"C24, C25",15 pF 0603,C1644,LCSC,20,100,0,0,Not ordered,0.0114,1.14,https://www.lcsc.com/product-detail/C1644.html,Crystal load C0G; 100-pc bag
+L2,0 Ω 0805,C17477,LCSC,10,100,0,0,Not ordered,0.0044,0.44,https://www.lcsc.com/product-detail/C17477.html,Antenna link; 100-pc bag
+"R14, R15",4.7 kΩ 0805,C17673,LCSC,20,100,0,0,Not ordered,0.0051,0.51,https://www.lcsc.com/product-detail/C17673.html,I2C pull-ups; 100-pc bag
+"R10, R11",10 kΩ 0805,C17414,LCSC,20,100,0,0,Not ordered,0.0034,0.34,https://www.lcsc.com/product-detail/C17414.html,Backlight + motor gate pulldowns; 100-pc bag
+R12,100 Ω 0805,C17408,LCSC,10,100,0,0,Not ordered,0.0042,0.42,https://www.lcsc.com/product-detail/C17408.html,Piezo series; 100-pc bag

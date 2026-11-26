@@ -7,10 +7,10 @@
 #include <stdint.h>
 
 #define CHAR_W 6
+/* Tall face. Caps are 7px, and a descender uses the 8th pixel. */
 #define CHAR_H 8
-/* 3×6 glyphs. FONT_SMALL_W is the advance, including a 1 px gap. */
-#define FONT_SMALL_W 4
-#define FONT_SMALL_H 6
+/* Normal Tiny5 face. The 5px caps, the dot, and the descender all sit in these 7. */
+#define FONT_SMALL_H 7
 #define DISPLAY_HEADER_H 9
 #define DISPLAY_WRAP_MAX 16
 
@@ -26,13 +26,14 @@ void display_draw_char(uint8_t *buf, int x, int y, uint32_t cp);
 void display_draw_text(uint8_t *buf, int x, int y, const char *s);
 int display_text_width(const char *s);
 void display_draw_text_small(uint8_t *buf, int x, int y, const char *s);
-/* Ink span of the small font, with no trailing gap. */
 int display_text_width_small(const char *s);
-/* Solid inverted bar, DISPLAY_HEADER_H tall. Title in the small font at (4, 1). */
+/* Solid inverted bar, DISPLAY_HEADER_H tall. Title in the tall face at (4, 1). */
 void display_draw_header(uint8_t *buf, const char *title);
 int display_cols(void);
 void display_clip(char *dst, size_t cap, const char *s, int max_chars);
-int display_wrap(const char *s, int width, char out[][DISPLAY_WIDTH + 1], int max_out);
+/* Fit s into max_px. A string that does not fit ends with one dot. */
+void display_clip_px(char *dst, size_t cap, const char *s, int max_px);
+int display_wrap(const char *s, int max_px, char out[][DISPLAY_WIDTH + 1], int max_out);
 void display_blit_sprite(uint8_t *dst, const uint8_t *sprite, size_t sprite_len, int sw, int sh,
                          int dx, int dy);
 int display_utf8_count(const char *s);

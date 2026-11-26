@@ -950,11 +950,6 @@ static void draw_beeple(screen_t *screen, uint8_t *buf) {
   blit_slot(buf, b->bits, b->w, b->h, MENU_HALF, 0, MENU_HALF, MENU_HALF);
 }
 
-static int small_chars_fit(int width) {
-  if (width < 3) return 0;
-  return (width - 3) / FONT_SMALL_W + 1;
-}
-
 static void draw_inbox(screen_t *screen, const hal_t *hal, uint8_t *buf) {
   const int y0 = 16;
   const int pitch = 8;
@@ -979,13 +974,13 @@ static void draw_inbox(screen_t *screen, const hal_t *hal, uint8_t *buf) {
     char hm[8];
     format_hm(hm, sizeof hm, screen->inbox[idx].received_hh, screen->inbox[idx].received_mm);
     char name[PAGE_FROM_MAX + 1];
-    display_clip(name, sizeof name, screen->inbox[idx].from, small_chars_fit(time_x - 2 - name_x));
+    display_clip_px(name, sizeof name, screen->inbox[idx].from, time_x - 2 - name_x);
     char body[PAGE_BODY_MAX + 1];
-    display_clip(body, sizeof body, screen->inbox[idx].body, small_chars_fit(msg_end - msg_x + 1));
+    display_clip_px(body, sizeof body, screen->inbox[idx].body, msg_end - msg_x + 1);
     display_draw_text_small(buf, name_x, y, name);
     display_draw_text_small(buf, time_x, y, hm);
     display_draw_text_small(buf, msg_x, y, body);
-    if (idx == screen->sel) display_invert_rect(buf, 0, y - 1, DISPLAY_WIDTH, pitch - 1);
+    if (idx == screen->sel) display_invert_rect(buf, 0, y - 1, DISPLAY_WIDTH, pitch);
   }
 }
 
@@ -1016,13 +1011,13 @@ static void draw_outbox(screen_t *screen, const hal_t *hal, uint8_t *buf) {
     else if (item->status == OUTBOX_SENDING) str_copy_max(status, sizeof status, "Retry", 8);
     else format_hm(status, sizeof status, item->sent_hh, item->sent_mm);
     char name[PAGE_FROM_MAX + 1];
-    display_clip(name, sizeof name, item->to, small_chars_fit(status_x - 2 - name_x));
+    display_clip_px(name, sizeof name, item->to, status_x - 2 - name_x);
     char body[PAGE_BODY_MAX + 1];
-    display_clip(body, sizeof body, item->body, small_chars_fit(msg_end - msg_x + 1));
+    display_clip_px(body, sizeof body, item->body, msg_end - msg_x + 1);
     display_draw_text_small(buf, name_x, y, name);
     display_draw_text_small(buf, status_x, y, status);
     display_draw_text_small(buf, msg_x, y, body);
-    if (idx == screen->sel) display_invert_rect(buf, 0, y - 1, DISPLAY_WIDTH, pitch - 1);
+    if (idx == screen->sel) display_invert_rect(buf, 0, y - 1, DISPLAY_WIDTH, pitch);
   }
 }
 
@@ -1043,21 +1038,21 @@ static void draw_outread(screen_t *screen, const hal_t *hal, uint8_t *buf) {
     str_copy_max(title, sizeof title, "delivered", 16);
   }
   char tclip[32];
-  display_clip(tclip, sizeof tclip, title, display_cols());
+  display_clip_px(tclip, sizeof tclip, title, DISPLAY_WIDTH - 2);
   display_draw_text(buf, 2, 2, tclip);
   display_invert_rect(buf, 0, 0, DISPLAY_WIDTH, CHAR_H + 4);
   char to[40];
   snprintf(to, sizeof to, "To : %s", p->to);
-  display_clip(tclip, sizeof tclip, to, display_cols());
+  display_clip_px(tclip, sizeof tclip, to, DISPLAY_WIDTH - 2);
   display_draw_text(buf, 2, 14, tclip);
   char sent[8], ack[8], times[48];
   format_hm(sent, sizeof sent, p->sent_hh, p->sent_mm);
   format_hm(ack, sizeof ack, p->acked_hh, p->acked_mm);
   snprintf(times, sizeof times, "sent %s  ack %s", sent, ack);
-  display_clip(tclip, sizeof tclip, times, display_cols());
+  display_clip_px(tclip, sizeof tclip, times, DISPLAY_WIDTH - 2);
   display_draw_text(buf, 2, 24, tclip);
   char lines[DISPLAY_WRAP_MAX][DISPLAY_WIDTH + 1];
-  int n = display_wrap(p->body, display_cols(), lines, DISPLAY_WRAP_MAX);
+  int n = display_wrap(p->body, DISPLAY_WIDTH - 2, lines, DISPLAY_WRAP_MAX);
   int y = 36;
   int show = n < 3 ? n : 3;
   for (int i = 0; i < show; i++) {
@@ -1072,14 +1067,12 @@ static void draw_read(screen_t *screen, const hal_t *hal, uint8_t *buf) {
     return;
   }
   const inbox_row_t *p = &screen->inbox[screen->reading];
-  char from[32];
-  display_clip(from, sizeof from, p->from, 10);
-  header(buf, from, hal);
+  header(buf, p->from, hal);
   char hm[8];
   format_hm(hm, sizeof hm, p->received_hh, p->received_mm);
   display_draw_text(buf, 2, 14, hm);
   char lines[DISPLAY_WRAP_MAX][DISPLAY_WIDTH + 1];
-  int n = display_wrap(p->body, display_cols(), lines, DISPLAY_WRAP_MAX);
+  int n = display_wrap(p->body, DISPLAY_WIDTH - 2, lines, DISPLAY_WRAP_MAX);
   int y = 24;
   int show = n < 3 ? n : 3;
   for (int i = 0; i < show; i++) {
@@ -1101,9 +1094,8 @@ static void draw_locate_list(screen_t *screen, const hal_t *hal, uint8_t *buf) {
     display_draw_text(buf, 14, 36, "pair first");
     return;
   }
-  int ncols = display_cols();
   for (int i = 0; i < screen->contacts->n; i++) {
-    display_clip(rows[i + 1], sizeof rows[i + 1], screen->contacts->rows[i].name, ncols - 1);
+    display_clip_px(rows[i + 1], sizeof rows[i + 1], screen->contacts->rows[i].name, DISPLAY_WIDTH - 4);
   }
   draw_list(screen, buf, rows, screen->contacts->n + 1);
 }
@@ -1130,9 +1122,7 @@ static void draw_track_chrome(uint8_t *buf) {
 
 static void draw_track_line(uint8_t *buf, int x, int y, const char *text, int width) {
   char clip[40];
-  int fit = small_chars_fit(width);
-  if (fit > 36) fit = 36;
-  display_clip(clip, sizeof clip, text ? text : "", fit);
+  display_clip_px(clip, sizeof clip, text ? text : "", width);
   display_draw_text_small(buf, x, y, clip);
 }
 
@@ -1141,25 +1131,25 @@ static void draw_track_looking(screen_t *screen, uint8_t *buf) {
   char line[PAGE_FROM_MAX + 8];
   identity_get_display_name(screen->identity, me, sizeof me);
   draw_track_chrome(buf);
-  draw_track_line(buf, 6, 19, me[0] ? me : "BEEPLE", 56);
-  draw_track_line(buf, 6, 29, "LOOKING", 56);
+  draw_track_line(buf, 6, 19, me[0] ? me : "BEEPLE", 58);
+  draw_track_line(buf, 6, 29, "LOOKING", 58);
   snprintf(line, sizeof line, "FOR %s", screen->loc_name[0] ? screen->loc_name : "PEEPLE");
-  draw_track_line(buf, 6, 38, line, 56);
+  draw_track_line(buf, 6, 38, line, 58);
 }
 
 static void draw_track_found(screen_t *screen, uint8_t *buf) {
   char line[PAGE_FROM_MAX + 12];
   draw_track_chrome(buf);
   snprintf(line, sizeof line, "%s FOUND!", screen->loc_name[0] ? screen->loc_name : "BEEPLE");
-  draw_track_line(buf, 6, 19, line, 56);
-  draw_track_line(buf, 6, 29, "ASKING NICELY", 56);
+  draw_track_line(buf, 6, 19, line, 58);
+  draw_track_line(buf, 6, 29, "ASKING NICELY", 58);
 }
 
 static void draw_track_denied(uint8_t *buf) {
   draw_track_chrome(buf);
-  draw_track_line(buf, 6, 19, "DENIED.", 56);
-  draw_track_line(buf, 6, 29, "THIS IS", 56);
-  draw_track_line(buf, 6, 39, "devastating.", 56);
+  draw_track_line(buf, 6, 19, "DENIED.", 58);
+  draw_track_line(buf, 6, 29, "THIS IS", 58);
+  draw_track_line(buf, 6, 39, "devastating.", 58);
 }
 
 static void draw_track_arrow(uint8_t *buf, const char *dist, int octant, int heading_deg) {
@@ -1223,7 +1213,7 @@ static void draw_octant_arrow(uint8_t *buf, int octant) {
 
 static void draw_locread(screen_t *screen, const hal_t *hal, uint8_t *buf) {
   char title[32];
-  display_clip(title, sizeof title, screen->loc_name[0] ? screen->loc_name : "LOCATE", 12);
+  display_clip_px(title, sizeof title, screen->loc_name[0] ? screen->loc_name : "LOCATE", DISPLAY_WIDTH - 8);
   if (screen->loc_busy) {
     header(buf, title, hal);
     display_draw_text(buf, 2, 20, "radio busy");
@@ -1303,9 +1293,9 @@ static void draw_compose_split(screen_t *screen, const hal_t *hal, uint8_t *buf,
       if (idx >= name_n) break;
       int y = y0 + i * pitch;
       char name[PAGE_FROM_MAX + 1];
-      display_clip(name, sizeof name, screen->contacts->rows[idx].name, small_chars_fit(name_end - name_x + 1));
+      display_clip_px(name, sizeof name, screen->contacts->rows[idx].name, name_end - name_x + 1);
       display_draw_text_small(buf, name_x, y, name);
-      if (idx == name_focus) display_invert_rect(buf, 0, y - 1, name_end + 2, pitch - 1);
+      if (idx == name_focus) display_invert_rect(buf, 0, y - 1, name_end + 2, pitch);
     }
   }
 
@@ -1321,16 +1311,16 @@ static void draw_compose_split(screen_t *screen, const hal_t *hal, uint8_t *buf,
     if (idx >= n) break;
     int y = y0 + i * pitch;
     char body[PAGE_BODY_MAX + 1];
-    display_clip(body, sizeof body, list[idx], small_chars_fit(msg_end - msg_x + 1));
+    display_clip_px(body, sizeof body, list[idx], msg_end - msg_x + 1);
     display_draw_text_small(buf, msg_x, y, body);
     if (messages && idx == screen->sel) {
-      display_invert_rect(buf, 49, y - 1, DISPLAY_WIDTH - 49, pitch - 1);
+      display_invert_rect(buf, 49, y - 1, DISPLAY_WIDTH - 49, pitch);
     }
   }
   int custom_y = y0 + msg_scroll * pitch;
   display_draw_text_small(buf, msg_x, custom_y, "Custom");
   if (messages && screen->sel == n) {
-    display_invert_rect(buf, 49, custom_y - 1, DISPLAY_WIDTH - 49, pitch - 1);
+    display_invert_rect(buf, 49, custom_y - 1, DISPLAY_WIDTH - 49, pitch);
   }
   for (int y = y0; y <= 57; y++) {
     display_set_pixel(buf, 46, y, true);
@@ -1351,8 +1341,7 @@ static void draw_status_line(uint8_t *buf, int y, const char *text) {
   const int left = 4;
   const int right = 62;
   char clip[24];
-  int fit = small_chars_fit(right - left);
-  display_clip(clip, sizeof clip, text ? text : "", fit);
+  display_clip_px(clip, sizeof clip, text ? text : "", right - left);
   int width = display_text_width_small(clip);
   int x = left;
   if (width < right - left) x = left + (right - left - width) / 2;
@@ -1397,7 +1386,7 @@ static void draw_pair(screen_t *screen, const hal_t *hal, uint8_t *buf) {
   if (err && strcmp(err, "try again") == 0) display_draw_text(buf, 2, 52, "ERROR: Try again");
   else if (err) {
     char clip[32];
-    display_clip(clip, sizeof clip, err, display_cols());
+    display_clip_px(clip, sizeof clip, err, DISPLAY_WIDTH - 2);
     display_draw_text(buf, 2, 52, clip);
   }
 }
@@ -1501,7 +1490,7 @@ static void draw_track_ask(screen_t *screen, const hal_t *hal, uint8_t *buf) {
   char clip[32];
   if (locate_ask_id(screen->locate, id)) name_for(screen, id, name, sizeof name);
   else str_copy_max(name, sizeof name, "contact", 16);
-  display_clip(clip, sizeof clip, name, display_cols());
+  display_clip_px(clip, sizeof clip, name, DISPLAY_WIDTH - 2);
   display_draw_text(buf, 2, 16, clip);
   display_draw_text(buf, 2, 32, "Allow");
   display_draw_text(buf, 2, 44, "Deny");
@@ -1512,7 +1501,7 @@ static void draw_track_ask(screen_t *screen, const hal_t *hal, uint8_t *buf) {
 static void draw_tracked(screen_t *screen, const hal_t *hal, uint8_t *buf) {
   header(buf, "TRACKED", hal);
   char clip[32];
-  display_clip(clip, sizeof clip, screen->track_name, display_cols());
+  display_clip_px(clip, sizeof clip, screen->track_name, DISPLAY_WIDTH - 2);
   display_draw_text(buf, 2, 20, clip);
   display_draw_text(buf, 2, 36, "is locating you");
 }
@@ -1535,7 +1524,7 @@ static void draw_alert(screen_t *screen, const hal_t *hal, uint8_t *buf) {
   for (int x = 0; x <= 54; x++) display_set_pixel(buf, x, 24, true);
   if (screen->has_alert) {
     char name[PAGE_FROM_MAX + 1];
-    display_clip(name, sizeof name, screen->alert.from, small_chars_fit(26));
+    display_clip_px(name, sizeof name, screen->alert.from, 26);
     display_draw_text_small(buf, 3, 17, name);
     char hm[8];
     if (screen->inbox_n > 0) {
@@ -1545,8 +1534,8 @@ static void draw_alert(screen_t *screen, const hal_t *hal, uint8_t *buf) {
     }
     display_draw_text_small(buf, 32, 17, hm);
     char lines[4][DISPLAY_WIDTH + 1];
-    int n = display_wrap(screen->alert.body, 14, lines, 4);
-    for (int i = 0; i < n; i++) display_draw_text_small(buf, 3, 29 + i * 7, lines[i]);
+    int n = display_wrap(screen->alert.body, 60, lines, 4);
+    for (int i = 0; i < n; i++) display_draw_text_small(buf, 3, 29 + i * 8, lines[i]);
   }
   if (deadline_live(hal->now_ms(hal->ctx), screen->flash_start, screen->flash_ms)) {
     display_invert_rect(buf, 0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT);

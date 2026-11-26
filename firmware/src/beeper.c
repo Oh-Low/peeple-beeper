@@ -43,9 +43,9 @@ void beeper_init(beeper_t *b) {
   identity_init(&b->identity);
   contacts_init(&b->contacts);
   pair_init(&b->pair);
-  message_init(&b->radio);
+  message_init(&b->message);
   locate_init(&b->locate);
-  screen_init(&b->screen, &b->identity, &b->contacts, &b->pair, &b->radio, &b->locate);
+  screen_init(&b->screen, &b->identity, &b->contacts, &b->pair, &b->message, &b->locate);
   b->nvm_ready = false;
   b->nvm_hash = 0;
 }
@@ -64,7 +64,7 @@ void beeper_tick(beeper_t *b, const hal_t *hal) {
     /* A repeat pair replaces the contact, so the count does not grow. */
     if (!pair_active(&b->pair) && !pair_error(&b->pair)) screen_finish_pair(&b->screen);
   } else {
-    beeper_sessions_tick(&b->radio, &b->identity, &b->contacts, hal, on_page, &ctx, &b->locate);
+    beeper_sessions_tick(&b->message, &b->identity, &b->contacts, hal, on_page, &ctx, &b->locate);
   }
 
   screen_poll_locate(&b->screen);
@@ -87,7 +87,7 @@ void beeper_reset(beeper_t *b, const hal_t *hal) {
   identity_reset(&b->identity);
   contacts_reset(&b->contacts);
   pair_reset(&b->pair, hal);
-  message_reset(&b->radio);
+  message_reset(&b->message);
   locate_reset(&b->locate);
   b->locate.track_open = false;
   screen_reset(&b->screen);

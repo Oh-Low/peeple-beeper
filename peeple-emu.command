@@ -1,5 +1,5 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")"
-make emu
+make bench
 exec ./build/peeple-emu

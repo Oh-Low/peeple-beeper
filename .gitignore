@@ -12,6 +12,11 @@ emu-nvm-*.bin
 *.kicad_pcb-bak
 fp-info-cache
 *.lck
+*.kicad_prl
+_autosave*
+.history/
+.mcp-backups/
+~*
 
 # Local Cursor MCP config (absolute paths to this machine)
 .cursor/mcp.json
@@ -21,15 +26,27 @@ fp-info-cache
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-# KiCad local editor junk
-.history/
-.mcp-backups/
-*.lck
-~*
+# Python and build products that land outside build/
+__pycache__/
+*.pyc
+*.o
+*.elf
+*.uf2
+*.map
+
 .tmp-cq/
+
+# Fab plots regenerated from hardware/esp32/peeple.kicad_pcb.
+# manufacturing/pcbv2/README.md stays tracked.
+manufacturing/pcbv2/gerbers/
+manufacturing/pcbv2/*.zip
+manufacturing/pcbv2/*.step
+manufacturing/pcbv2/*.pdf
+manufacturing/pcbv2/*.csv

@@ -1,6 +1,6 @@
 #include "gps.h"
 #include "nmea.h"
-#include "beeper_hal.h"
+#include "feather_hal.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -79,11 +79,11 @@ static void test_nmea(void) {
   CHECK(!fix.valid, "void fix");
 
   hal_t hal;
-  beeper_hal_init(&hal);
+  feather_hal_init(&hal);
   snprintf(line, sizeof line, "$GPRMC,120000.000,A,0000.0248,N,00000.0246,W,0.00,0.00,091026,,,A");
   finish_nmea(line, sizeof line);
-  for (char *p = line; *p; p++) beeper_gps_push_byte((uint8_t)*p);
-  beeper_gps_push_byte('\n');
+  for (char *p = line; *p; p++) feather_gps_push_byte((uint8_t)*p);
+  feather_gps_push_byte('\n');
   CHECK(hal.gps_fix(hal.ctx, &fix), "nRF line buffer yields a fix");
   CHECK_EQ(fix.lat_min_e4, 248, "pushed lat");
   CHECK_EQ(fix.lon_min_e4, -246, "pushed lon");
@@ -92,14 +92,14 @@ static void test_nmea(void) {
   snprintf(classic, sizeof classic,
            "$GPRMC,123519.000,A,4807.0380,N,01131.0000,E,022.4,084.4,230394,,,A");
   finish_nmea(classic, sizeof classic);
-  for (int i = 0; i < 95; i++) beeper_gps_push_byte('X');
-  for (char *p = classic; *p; p++) beeper_gps_push_byte((uint8_t)*p);
-  beeper_gps_push_byte('\n');
+  for (int i = 0; i < 95; i++) feather_gps_push_byte('X');
+  for (char *p = classic; *p; p++) feather_gps_push_byte((uint8_t)*p);
+  feather_gps_push_byte('\n');
   CHECK(hal.gps_fix(hal.ctx, &fix), "previous fix still stands");
   CHECK_EQ(fix.lat_min_e4, 248, "an overlong line is not stored");
 
-  for (char *p = classic; *p; p++) beeper_gps_push_byte((uint8_t)*p);
-  beeper_gps_push_byte('\n');
+  for (char *p = classic; *p; p++) feather_gps_push_byte((uint8_t)*p);
+  feather_gps_push_byte('\n');
   CHECK(hal.gps_fix(hal.ctx, &fix), "the next line parses");
   CHECK_EQ(fix.lat_min_e4, 28870380, "next line lat");
   uint8_t hh = 0;
