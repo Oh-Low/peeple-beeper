@@ -220,12 +220,138 @@ static void test_vibe_pulse(void) {
   pass("vibe pulse");
 }
 
+static bool cols_eq(const uint8_t *a, int ax, const uint8_t *b, int bx, int n) {
+  for (int x = 0; x < n; x++) {
+    for (int page = 0; page < DISPLAY_PAGES; page++) {
+      if (a[page * DISPLAY_WIDTH + ax + x] != b[page * DISPLAY_WIDTH + bx + x]) return false;
+    }
+  }
+  return true;
+}
+
+static void test_slide(void) {
+  beeper_t b;
+  emu_hal_t ram;
+  hal_t hal;
+  uint8_t menu[DISPLAY_BUF_LEN];
+  uint8_t settings[DISPLAY_BUF_LEN];
+  uint8_t mid[DISPLAY_BUF_LEN];
+  uint8_t settled[DISPLAY_BUF_LEN];
+  beeper_init(&b);
+  emu_hal_init(&ram, &hal);
+
+  ram.now_ms = 1000;
+  screen_render(&b.screen, &hal);
+  memcpy(menu, ram.display, DISPLAY_BUF_LEN);
+
+  b.screen.sel = 4;
+  emu_hal_push_encoder(&ram, ENC_PRESS);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.mode == SCREEN_SETTINGS, "press opens settings");
+  emu_hal_push_encoder(&ram, ENC_PRESS);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.mode == SCREEN_SETTINGS && b.screen.sel == 1, "a press during the slide is dropped");
+
+  screen_render(&b.screen, &hal);
+  CHECK(memcmp(ram.display, menu, DISPLAY_BUF_LEN) == 0, "a slide starts on the old page");
+
+  ram.now_ms = 1000 + SCREEN_SLIDE_MS / 2;
+  screen_render(&b.screen, &hal);
+  memcpy(mid, ram.display, DISPLAY_BUF_LEN);
+  ram.now_ms = 1000 + SCREEN_SLIDE_MS;
+  screen_render(&b.screen, &hal);
+  memcpy(settings, ram.display, DISPLAY_BUF_LEN);
+  CHECK(memcmp(settings, menu, DISPLAY_BUF_LEN) != 0, "settings is a different page");
+  CHECK(cols_eq(mid, 0, menu, DISPLAY_WIDTH / 2, DISPLAY_WIDTH / 2), "the old page leaves to the left");
+  CHECK(cols_eq(mid, DISPLAY_WIDTH / 2, settings, 0, DISPLAY_WIDTH / 2), "the new page comes in from the right");
+
+  emu_hal_push_back(&ram);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.mode == SCREEN_MENU, "back returns to the menu");
+  screen_render(&b.screen, &hal);
+  CHECK(memcmp(ram.display, settings, DISPLAY_BUF_LEN) == 0, "back starts on settings");
+  ram.now_ms = 1000 + SCREEN_SLIDE_MS + SCREEN_SLIDE_MS / 2;
+  screen_render(&b.screen, &hal);
+  memcpy(mid, ram.display, DISPLAY_BUF_LEN);
+  ram.now_ms = 1000 + SCREEN_SLIDE_MS + SCREEN_SLIDE_MS;
+  screen_render(&b.screen, &hal);
+  memcpy(settled, ram.display, DISPLAY_BUF_LEN);
+  CHECK(cols_eq(mid, 0, settled, DISPLAY_WIDTH / 2, DISPLAY_WIDTH / 2), "back brings the menu in from the left");
+  CHECK(cols_eq(mid, DISPLAY_WIDTH / 2, settings, 0, DISPLAY_WIDTH / 2), "back takes settings off to the right");
+
+  ram.now_ms = 5000;
+  emu_hal_push_encoder(&ram, ENC_PRESS);
+  screen_input(&b.screen, &hal);
+  {
+    page_t page;
+    fill_page(&page);
+    screen_on_page(&b.screen, &hal, &page);
+  }
+  screen_render(&b.screen, &hal);
+  CHECK(b.screen.mode == SCREEN_ALERT, "a page takes the screen");
+  CHECK(b.screen.slide_dir == 0, "an alert cancels the slide");
+  memcpy(settled, ram.display, DISPLAY_BUF_LEN);
+  CHECK(memcmp(settled, menu, DISPLAY_BUF_LEN) != 0, "an alert is not the page it interrupted");
+  screen_render(&b.screen, &hal);
+  CHECK(memcmp(ram.display, settled, DISPLAY_BUF_LEN) == 0, "an alert does not slide");
+
+  b.screen.mode = SCREEN_MENU;
+  b.screen.sel = 0;
+  b.screen.dark_mode = true;
+  ram.now_ms = 8000;
+  screen_render(&b.screen, &hal);
+  memcpy(menu, ram.display, DISPLAY_BUF_LEN);
+  emu_hal_push_encoder(&ram, ENC_PRESS);
+  screen_input(&b.screen, &hal);
+  ram.now_ms = 8000 + SCREEN_SLIDE_MS / 2;
+  screen_render(&b.screen, &hal);
+  memcpy(mid, ram.display, DISPLAY_BUF_LEN);
+  ram.now_ms = 8000 + SCREEN_SLIDE_MS;
+  screen_render(&b.screen, &hal);
+  memcpy(settled, ram.display, DISPLAY_BUF_LEN);
+  CHECK(cols_eq(mid, 0, menu, DISPLAY_WIDTH / 2, DISPLAY_WIDTH / 2), "a dark slide keeps the old half");
+  CHECK(cols_eq(mid, DISPLAY_WIDTH / 2, settled, 0, DISPLAY_WIDTH / 2), "a dark slide keeps the new half");
+
+  b.screen.mode = SCREEN_MENU;
+  b.screen.sel = 4;
+  b.screen.dark_mode = false;
+  b.screen.slide_dir = 0;
+  ram.now_ms = 9000;
+  screen_render(&b.screen, &hal);
+  emu_hal_push_encoder(&ram, ENC_PRESS);
+  emu_hal_push_encoder(&ram, ENC_PRESS);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.mode == SCREEN_SETTINGS, "the first press opens settings");
+  ram.now_ms = 9000 + SCREEN_SLIDE_MS;
+  screen_render(&b.screen, &hal);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.mode == SCREEN_SETTINGS, "a second press in the same turn is not left queued");
+
+  b.screen.mode = SCREEN_PAIR;
+  b.screen.slide_dir = 1;
+  b.screen.slide_mode = SCREEN_PAIR;
+  b.screen.slide_start = ram.now_ms;
+  emu_hal_push_back(&ram);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.mode == SCREEN_PEEPLE, "back during a slide aborts pairing");
+
+  b.screen.mode = SCREEN_LOCATING;
+  b.screen.slide_dir = 1;
+  b.screen.slide_mode = SCREEN_LOCATING;
+  b.screen.slide_start = ram.now_ms;
+  emu_hal_push_back(&ram);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.mode == SCREEN_LOCATE, "back during a slide aborts a locate");
+  pass("slide");
+}
+
 int main(void) {
   test_backlight_timer();
   test_settings_release();
   test_beep_test();
   test_alert_keeps_chirp();
   test_vibe_pulse();
+  test_slide();
   printf("%d passed, %d failed\n", g_pass, g_fail);
   return g_fail ? 1 : 0;
 }

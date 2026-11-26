@@ -27,6 +27,8 @@ void display_draw_text(uint8_t *buf, int x, int y, const char *s);
 int display_text_width(const char *s);
 void display_draw_text_small(uint8_t *buf, int x, int y, const char *s);
 int display_text_width_small(const char *s);
+/* Columns from the origin through the last ink of the normal face. */
+int display_glyph_ink(uint32_t cp);
 /* Solid inverted bar, DISPLAY_HEADER_H tall. Title in the tall face at (4, 1). */
 void display_draw_header(uint8_t *buf, const char *title);
 int display_cols(void);
@@ -36,4 +38,5 @@ void display_clip_px(char *dst, size_t cap, const char *s, int max_px);
 int display_wrap(const char *s, int max_px, char out[][DISPLAY_WIDTH + 1], int max_out);
 void display_blit_sprite(uint8_t *dst, const uint8_t *sprite, size_t sprite_len, int sw, int sh,
                          int dx, int dy);
+void display_slide(uint8_t *dst, const uint8_t *from, const uint8_t *to, int shift);
 int display_utf8_count(const char *s);

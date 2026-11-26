@@ -44,6 +44,8 @@ enum {
   SET_N
 };
 
+enum { NAV_STAY = 0, NAV_PUSH = 1, NAV_POP = -1 };
+
 void screen_init(screen_t *screen, identity_store_t *identity, contact_book_t *contacts,
                 pair_session_t *pair, message_session_t *radio, locate_radio_t *locate) {
   memset(screen, 0, sizeof *screen);
@@ -528,10 +530,10 @@ static void on_back(screen_t *screen, const hal_t *hal) {
   }
 }
 
-static void on_press(screen_t *screen, const hal_t *hal) {
+static int on_press(screen_t *screen, const hal_t *hal) {
   if (screen->mode == SCREEN_PAIR || screen->mode == SCREEN_SENDING ||
       screen->mode == SCREEN_LOCATING) {
-    return;
+    return NAV_STAY;
   }
   if (screen->mode == SCREEN_LOCREAD) {
     if (locate_busy(screen->locate)) locate_abort(screen->locate);
@@ -540,25 +542,25 @@ static void on_press(screen_t *screen, const hal_t *hal) {
     screen->loc_capture_wait = false;
     screen->mode = SCREEN_LOCATE;
     screen->sel = screen->contacts->n ? 1 : 0;
-    return;
+    return NAV_POP;
   }
 
   if (screen->mode == SCREEN_SENT || screen->mode == SCREEN_FAILED) {
     dismiss_sent(screen, hal);
-    return;
+    return screen->mode == SCREEN_OUTBOX ? NAV_POP : NAV_STAY;
   }
   if (screen->mode == SCREEN_ALERT && screen->has_alert) {
     screen->reading = 0;
     screen->mode = SCREEN_READ;
     screen->has_alert = false;
-    return;
+    return NAV_PUSH;
   }
   if (screen->mode == SCREEN_READ) {
     screen->mode = SCREEN_INBOX;
     screen->sel = screen->reading;
     if (screen->inbox_n <= 0) screen->sel = 0;
     else if (screen->sel >= screen->inbox_n) screen->sel = screen->inbox_n - 1;
-    return;
+    return NAV_POP;
   }
   if (screen->mode == SCREEN_MENU) {
     if (screen->sel == 0) {
@@ -583,13 +585,13 @@ static void on_press(screen_t *screen, const hal_t *hal) {
       screen->mode = SCREEN_BEEPLE;
       screen->sel = screen->beeple;
     }
-    return;
+    return screen->mode == SCREEN_MENU ? NAV_STAY : NAV_PUSH;
   }
   if (screen->mode == SCREEN_BEEPLE) {
     screen_set_beeple(screen, screen->sel);
     screen->mode = SCREEN_MENU;
     screen->sel = MENU_BEEPLE;
-    return;
+    return NAV_POP;
   }
   if (screen->mode == SCREEN_PEEPLE) {
     if (screen->sel == PEEP_LOCATE) {
@@ -603,7 +605,7 @@ static void on_press(screen_t *screen, const hal_t *hal) {
         screen->sel = 0;
       }
     }
-    return;
+    return screen->mode == SCREEN_PEEPLE ? NAV_STAY : NAV_PUSH;
   }
   if (screen->mode == SCREEN_SETTINGS) {
     if (screen->sel == SET_BACK) {
@@ -611,39 +613,39 @@ static void on_press(screen_t *screen, const hal_t *hal) {
       stop_output_tests(screen, hal);
       screen->mode = SCREEN_MENU;
       screen->sel = MENU_SETTINGS;
-      return;
+      return NAV_POP;
     }
     if (screen->sel == SET_NAME) {
       stop_output_tests(screen, hal);
       begin_name_edit(screen);
-      return;
+      return NAV_PUSH;
     }
     if (screen->sel == SET_TRACK) {
       locate_set_open(screen->locate, !locate_is_open(screen->locate));
-      return;
+      return NAV_STAY;
     }
     if (screen->sel == SET_CLOCK) {
       screen->show_clock_bat = !screen->show_clock_bat;
-      return;
+      return NAV_STAY;
     }
     if (screen->sel == SET_TZ) {
       screen->tz_edit = !screen->tz_edit;
-      return;
+      return NAV_STAY;
     }
     if (screen->sel == SET_DARK) {
       screen->dark_mode = !screen->dark_mode;
-      return;
+      return NAV_STAY;
     }
     if (screen->sel == SET_LIGHT) {
       screen->light_edit = !screen->light_edit;
-      return;
+      return NAV_STAY;
     }
     if (screen->sel == SET_VIBE) {
       screen->vibe_test = true;
       screen->vibe_since = hal->now_ms(hal->ctx);
     }
     if (screen->sel == SET_BEEP) screen->beep_test = true;
-    return;
+    return NAV_STAY;
   }
   if (screen->mode == SCREEN_TRACKASK) {
     if (screen->sel == 0) {
@@ -653,92 +655,94 @@ static void on_press(screen_t *screen, const hal_t *hal) {
     }
     screen->mode = SCREEN_MENU;
     screen->sel = 0;
-    return;
+    return NAV_POP;
   }
   if (screen->mode == SCREEN_TRACKED) {
     screen->mode = SCREEN_MENU;
     screen->sel = 0;
-    return;
+    return NAV_POP;
   }
   if (screen->mode == SCREEN_NAMEEDIT) {
     if (text_edit_press(&screen->edit) == TEXT_PRESS_OK) save_name_edit(screen);
-    return;
+    return screen->mode == SCREEN_NAMEEDIT ? NAV_STAY : NAV_POP;
   }
   if (screen->mode == SCREEN_BODYEDIT) {
     text_edit_press_t result = text_edit_press(&screen->edit);
     if (result == TEXT_PRESS_OK) send_body_edit(screen, hal);
     else if (result == TEXT_PRESS_SAVE) save_canned_draft(screen, hal);
-    return;
+    return screen->mode == SCREEN_CANNED ? NAV_POP : NAV_STAY;
   }
   if (screen->mode == SCREEN_INBOX) {
     if (screen->sel >= 0 && screen->sel < screen->inbox_n) {
       screen->reading = screen->sel;
       screen->mode = SCREEN_READ;
     }
-    return;
+    return screen->mode == SCREEN_INBOX ? NAV_STAY : NAV_PUSH;
   }
   if (screen->mode == SCREEN_OUTBOX) {
     if (screen->sel >= 0 && screen->sel < screen->outbox_n) {
       if (screen->outbox[screen->sel].status == OUTBOX_FAILED) {
         retry_outbox(screen, hal, screen->sel);
-        return;
+        return NAV_STAY;
       }
       screen->reading = screen->sel;
       screen->mode = SCREEN_OUTREAD;
     }
-    return;
+    return screen->mode == SCREEN_OUTBOX ? NAV_STAY : NAV_PUSH;
   }
   if (screen->mode == SCREEN_OUTREAD) {
     if (screen->reading >= 0 && screen->reading < screen->outbox_n &&
         screen->outbox[screen->reading].status == OUTBOX_FAILED) {
       retry_outbox(screen, hal, screen->reading);
-      return;
+      return NAV_STAY;
     }
     screen->mode = SCREEN_OUTBOX;
     screen->sel = screen->reading;
     if (screen->outbox_n <= 0) screen->sel = 0;
     else if (screen->sel >= screen->outbox_n) screen->sel = screen->outbox_n - 1;
-    return;
+    return NAV_POP;
   }
   if (screen->mode == SCREEN_COMPOSE) {
-    if (!screen->contacts || screen->sel < 0 || screen->sel >= screen->contacts->n) return;
+    if (!screen->contacts || screen->sel < 0 || screen->sel >= screen->contacts->n) return NAV_STAY;
     memcpy(screen->compose_dest, screen->contacts->rows[screen->sel].node_id, NODE_ID_LEN);
     screen->has_compose_dest = true;
     screen->mode = SCREEN_CANNED;
     screen->sel = 0;
-    return;
+    return NAV_PUSH;
   }
   if (screen->mode == SCREEN_CANNED) {
     int n = canned_msg_n(screen);
     if (screen->sel == n) {
       begin_body_edit(screen);
-      return;
+      return NAV_PUSH;
     }
-    if (!screen->has_compose_dest) return;
+    if (!screen->has_compose_dest) return NAV_STAY;
     char list[CANNED_SAVED_MAX + CANNED_DEFAULT_N][PAGE_BODY_MAX + 1];
     int listed = canned_list(&screen->canned, list, CANNED_SAVED_MAX + CANNED_DEFAULT_N);
     if (screen->sel >= 0 && screen->sel < listed) send_page(screen, hal, screen->compose_dest, list[screen->sel], -1);
-    return;
+    return NAV_STAY;
   }
   if (screen->mode == SCREEN_LOCATE) {
     if (screen->sel == 0) {
       screen->mode = SCREEN_PEEPLE;
       screen->sel = PEEP_LOCATE;
-      return;
+      return NAV_POP;
     }
-    if (screen->contacts->n == 0) return;
+    if (screen->contacts->n == 0) return NAV_STAY;
     int idx = screen->sel - 1;
-    if (idx < 0 || idx >= screen->contacts->n) return;
+    if (idx < 0 || idx >= screen->contacts->n) return NAV_STAY;
     const contact_t *c = &screen->contacts->rows[idx];
     str_copy_max(screen->loc_name, sizeof screen->loc_name, c->name, PAGE_FROM_MAX);
     if (!locate_tx(screen->locate, hal, c->node_id, screen->contacts)) {
       screen->loc_busy = true;
       screen->mode = SCREEN_LOCREAD;
-      return;
+      return NAV_STAY;
     }
     screen->loc_busy = false;
     screen->mode = SCREEN_LOCATING;
+    return NAV_PUSH;
   }
+  return NAV_STAY;
 }
 
 void screen_on_page(screen_t *screen, const hal_t *hal, const page_t *page) {
@@ -1542,11 +1546,44 @@ static void draw_alert(screen_t *screen, const hal_t *hal, uint8_t *buf) {
   }
 }
 
+static bool slide_cut(screen_mode_t mode) {
+  return mode == SCREEN_SENDING || mode == SCREEN_ALERT || mode == SCREEN_LOCREAD;
+}
+
+static bool slide_playing(const screen_t *screen, const hal_t *hal) {
+  if (screen->slide_dir == 0 || screen->mode != screen->slide_mode) return false;
+  return elapsed_u32(hal->now_ms(hal->ctx), screen->slide_start) < SCREEN_SLIDE_MS;
+}
+
+static void drop_encoder(const hal_t *hal) {
+  while (hal->encoder_poll(hal->ctx) != ENC_NONE) {
+  }
+}
+
+static void arm_slide(screen_t *screen, const hal_t *hal, int dir) {
+  if (slide_cut(screen->mode)) {
+    screen->slide_dir = 0;
+    return;
+  }
+  memcpy(screen->slide_from, hal->display_buffer(hal->ctx), DISPLAY_BUF_LEN);
+  screen->slide_start = hal->now_ms(hal->ctx);
+  screen->slide_mode = screen->mode;
+  screen->slide_dir = (int8_t)dir;
+}
+
 void screen_input(screen_t *screen, const hal_t *hal) {
   bool woke = false;
+  if (screen->slide_dir != 0 && screen->mode != screen->slide_mode) screen->slide_dir = 0;
   if (hal->back_poll(hal->ctx)) {
+    screen_mode_t before = screen->mode;
     on_back(screen, hal);
+    if (screen->mode != before) arm_slide(screen, hal, NAV_POP);
     woke = true;
+  }
+  if (slide_playing(screen, hal)) {
+    while (hal->encoder_poll(hal->ctx) != ENC_NONE) woke = true;
+    if (woke) light_wake(screen, hal);
+    return;
   }
   for (;;) {
     encoder_event_t ev = hal->encoder_poll(hal->ctx);
@@ -1558,7 +1595,14 @@ void screen_input(screen_t *screen, const hal_t *hal) {
     }
     if (ev == ENC_CW) on_turn(screen, 1);
     else if (ev == ENC_CCW) on_turn(screen, -1);
-    else if (ev == ENC_PRESS) on_press(screen, hal);
+    else if (ev == ENC_PRESS) {
+      int dir = on_press(screen, hal);
+      if (dir) {
+        arm_slide(screen, hal, dir);
+        drop_encoder(hal);
+        break;
+      }
+    }
   }
   if (woke) light_wake(screen, hal);
 }
@@ -1599,7 +1643,21 @@ void screen_render(screen_t *screen, const hal_t *hal) {
   }
   if (screen->dark_mode) display_invert_rect(buf, 0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT);
 
+  if (screen->slide_dir != 0 && screen->mode != screen->slide_mode) screen->slide_dir = 0;
+
   uint8_t *dst = hal->display_buffer(hal->ctx);
+  if (screen->slide_dir != 0) {
+    uint32_t elapsed = elapsed_u32(hal->now_ms(hal->ctx), screen->slide_start);
+    if (elapsed >= SCREEN_SLIDE_MS) {
+      screen->slide_dir = 0;
+    } else {
+      int shift = (int)((elapsed * (uint32_t)DISPLAY_WIDTH) / SCREEN_SLIDE_MS);
+      if (screen->slide_dir < 0) shift = -shift;
+      display_slide(dst, screen->slide_from, buf, shift);
+      hal->display_flush(hal->ctx);
+      return;
+    }
+  }
   if (memcmp(dst, buf, DISPLAY_BUF_LEN) == 0) return;
   memcpy(dst, buf, DISPLAY_BUF_LEN);
   hal->display_flush(hal->ctx);
@@ -1733,5 +1791,6 @@ void screen_reset(screen_t *screen) {
   canned_reset(&screen->canned);
   screen->vibe_test = false;
   screen->beep_test = false;
+  screen->slide_dir = 0;
   display_clear(screen->buf);
 }

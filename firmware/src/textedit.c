@@ -261,24 +261,12 @@ void text_edit_draw(text_edit_t *edit, uint8_t *buf, uint8_t hh, uint8_t mm) {
   for (int x = 1; x <= 90; x++) display_set_pixel(buf, x, 25, true);
 
   static const int row_y[4] = {33, 41, 49, 57};
-  const int key_x0 = 34;
+  const int key_gap = 2;
   cell_t cells[CELL_MAX];
   int n = flatten(edit, cells);
   for (int r = 0; r < 4; r++) {
     int y = row_y[r];
-    int chars = 0;
-    int ink = 0;
-    for (int i = 0; i < n; i++) {
-      if (cells[i].row != r || cells[i].kind != CELL_CHAR) continue;
-      chars++;
-      ink += ch_adv(cells[i].ch);
-    }
-    int gap = 0;
-    if (chars > 1) {
-      int extra = (DISPLAY_WIDTH - key_x0) - ink;
-      if (extra > 0) gap = extra / (chars - 1);
-    }
-    int x = key_x0;
+    int x = 34;
     for (int i = 0; i < n; i++) {
       if (cells[i].row != r) continue;
       if (cells[i].kind != CELL_CHAR) {
@@ -292,10 +280,10 @@ void text_edit_draw(text_edit_t *edit, uint8_t *buf, uint8_t hh, uint8_t mm) {
         continue;
       }
       char lab[2] = {cells[i].ch, 0};
-      int adv = ch_adv(cells[i].ch);
+      int ink = display_glyph_ink((unsigned char)cells[i].ch);
       display_draw_text_small(buf, x, y, lab);
-      if (i == edit->sel) display_invert_rect(buf, x, y - 1, adv, FONT_SMALL_H + 1);
-      x += adv + gap;
+      if (i == edit->sel) display_invert_rect(buf, x, y - 1, ink, FONT_SMALL_H + 1);
+      x += ink + key_gap;
     }
   }
   for (int y = 32; y <= 63; y++) display_set_pixel(buf, 30, y, true);

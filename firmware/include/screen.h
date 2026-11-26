@@ -15,6 +15,7 @@
 
 #define PAGE_KEEP_MAX 256
 #define CLOCK_NONE 255
+#define SCREEN_SLIDE_MS 200
 
 typedef enum {
   SCREEN_MENU = 0,
@@ -129,6 +130,10 @@ typedef struct {
   bool loc_need_refresh;
   bool loc_capture_wait;
   char track_name[PAGE_FROM_MAX + 1];
+  uint8_t slide_from[DISPLAY_BUF_LEN];
+  uint32_t slide_start;
+  screen_mode_t slide_mode;
+  int8_t slide_dir;
 } screen_t;
 
 void screen_init(screen_t *screen, identity_store_t *identity, contact_book_t *contacts,

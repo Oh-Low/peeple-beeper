@@ -280,6 +280,15 @@ static const uint8_t *glyph_cols(uint32_t cp, bool tall) {
   return GLYPH_FALLBACK;
 }
 
+int display_glyph_ink(uint32_t cp) {
+  const uint8_t *cols = glyph_cols(cp, false);
+  int n = 0;
+  for (int x = 0; x < 5; x++) {
+    if (cols[x]) n = x + 1;
+  }
+  return n > 0 ? n : 1;
+}
+
 size_t display_buf_index(int x, int y) {
   return (size_t)(y >> 3) * DISPLAY_WIDTH + (size_t)x;
 }
@@ -597,6 +606,26 @@ int display_wrap(const char *s, int max_px, char out[][DISPLAY_WIDTH + 1], int m
     else break;
   }
   return nlines;
+}
+
+void display_slide(uint8_t *dst, const uint8_t *from, const uint8_t *to, int shift) {
+  if (shift > DISPLAY_WIDTH) shift = DISPLAY_WIDTH;
+  if (shift < -DISPLAY_WIDTH) shift = -DISPLAY_WIDTH;
+  for (int page = 0; page < DISPLAY_PAGES; page++) {
+    const uint8_t *f = from + page * DISPLAY_WIDTH;
+    const uint8_t *t = to + page * DISPLAY_WIDTH;
+    uint8_t *d = dst + page * DISPLAY_WIDTH;
+    if (shift > 0) {
+      if (shift < DISPLAY_WIDTH) memcpy(d, f + shift, (size_t)(DISPLAY_WIDTH - shift));
+      memcpy(d + (DISPLAY_WIDTH - shift), t, (size_t)shift);
+    } else if (shift < 0) {
+      int s = -shift;
+      memcpy(d, t + (DISPLAY_WIDTH - s), (size_t)s);
+      if (s < DISPLAY_WIDTH) memcpy(d + s, f, (size_t)(DISPLAY_WIDTH - s));
+    } else {
+      memcpy(d, f, DISPLAY_WIDTH);
+    }
+  }
 }
 
 void display_blit_sprite(uint8_t *dst, const uint8_t *sprite, size_t sprite_len, int sw, int sh,
