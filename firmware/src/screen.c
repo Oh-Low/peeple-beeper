@@ -11,9 +11,12 @@
 #define FLASH_MS 400
 #define MENU_HALF 64
 #define MENU_N 6
+#define MENU_COMPOSE 0
+#define MENU_INBOX 1
+#define MENU_OUTBOX 2
 #define MENU_PEEPLE 3
-#define MENU_SETTINGS 4
-#define MENU_BEEPLE 5
+#define MENU_BEEPLE 4
+#define MENU_SETTINGS 5
 
 #define PEEP_N 2
 #define PEEP_LOCATE 0
@@ -351,6 +354,37 @@ static void dismiss_sent(screen_t *screen, const hal_t *hal) {
   screen->sel = 0;
 }
 
+#define BEEPLE_PAGE_N 2
+#define BEEPLE_BODY_Y 22
+#define BEEPLE_FLAVOR_Y 32
+
+static bool beeple_sliding(const screen_t *screen, const hal_t *hal) {
+  if (screen->beeple_slide_dir == 0) return false;
+  return elapsed_u32(hal->now_ms(hal->ctx), screen->beeple_slide_start) < SCREEN_SLIDE_MS;
+}
+
+static void beeple_turn(screen_t *screen, const hal_t *hal, int dir) {
+  if (beeple_sliding(screen, hal)) return;
+  if (screen->beeple_focus == 0) {
+    int page = screen->beeple_page + (dir > 0 ? 1 : -1);
+    if (page < 0) page = BEEPLE_PAGE_N - 1;
+    if (page >= BEEPLE_PAGE_N) page = 0;
+    screen->beeple_slide_from = screen->beeple_page;
+    screen->beeple_slide_dir = dir > 0 ? 1 : -1;
+    screen->beeple_slide_start = hal->now_ms(hal->ctx);
+    screen->beeple_page = (int8_t)page;
+    return;
+  }
+  int from = screen->beeple;
+  int id = from + dir;
+  if (id < 0) id = BEEPLE_N - 1;
+  if (id >= BEEPLE_N) id = 0;
+  screen->beeple_slide_from = (int8_t)from;
+  screen->beeple_slide_dir = dir > 0 ? 1 : -1;
+  screen->beeple_slide_start = hal->now_ms(hal->ctx);
+  screen_set_beeple(screen, id);
+}
+
 static void on_turn(screen_t *screen, int dir) {
   if (screen->mode == SCREEN_ALERT || screen->mode == SCREEN_READ ||
       screen->mode == SCREEN_PAIR || screen->mode == SCREEN_SENDING ||
@@ -391,7 +425,6 @@ static void on_turn(screen_t *screen, int dir) {
   }
   else if (screen->mode == SCREEN_CANNED) clamp_sel(screen, canned_rows(screen));
   else if (screen->mode == SCREEN_SETTINGS) clamp_sel(screen, SET_N);
-  else if (screen->mode == SCREEN_BEEPLE) clamp_sel(screen, BEEPLE_N);
   else if (screen->mode == SCREEN_LOCATE) clamp_sel(screen, screen->contacts->n + 1);
   else if (screen->mode == SCREEN_TRACKASK) clamp_sel(screen, 2);
 }
@@ -452,6 +485,12 @@ static void on_back(screen_t *screen, const hal_t *hal) {
     return;
   }
   if (screen->mode == SCREEN_BEEPLE) {
+    if (screen->beeple_focus) {
+      screen->beeple_focus = 0;
+      screen->beeple_slide_dir = 0;
+      return;
+    }
+    screen->beeple_slide_dir = 0;
     screen->mode = SCREEN_MENU;
     screen->sel = MENU_BEEPLE;
     return;
@@ -498,7 +537,7 @@ static void on_back(screen_t *screen, const hal_t *hal) {
   }
   if (screen->mode == SCREEN_OUTBOX) {
     screen->mode = SCREEN_MENU;
-    screen->sel = 2;
+    screen->sel = MENU_OUTBOX;
     return;
   }
   if (screen->mode == SCREEN_LOCATING) {
@@ -522,10 +561,15 @@ static void on_back(screen_t *screen, const hal_t *hal) {
     screen->sel = PEEP_LOCATE;
     return;
   }
-  if (screen->mode == SCREEN_READ || screen->mode == SCREEN_INBOX ||
-      screen->mode == SCREEN_COMPOSE) {
+  if (screen->mode == SCREEN_COMPOSE) {
     screen->mode = SCREEN_MENU;
-    screen->sel = 0;
+    screen->sel = MENU_COMPOSE;
+    screen->has_compose_dest = false;
+    return;
+  }
+  if (screen->mode == SCREEN_READ || screen->mode == SCREEN_INBOX) {
+    screen->mode = SCREEN_MENU;
+    screen->sel = MENU_INBOX;
     screen->has_compose_dest = false;
   }
 }
@@ -563,14 +607,14 @@ static int on_press(screen_t *screen, const hal_t *hal) {
     return NAV_POP;
   }
   if (screen->mode == SCREEN_MENU) {
-    if (screen->sel == 0) {
-      screen->mode = SCREEN_INBOX;
-      screen->sel = 0;
-    } else if (screen->sel == 1) {
+    if (screen->sel == MENU_COMPOSE) {
       screen->mode = SCREEN_COMPOSE;
       screen->has_compose_dest = false;
       screen->sel = 0;
-    } else if (screen->sel == 2) {
+    } else if (screen->sel == MENU_INBOX) {
+      screen->mode = SCREEN_INBOX;
+      screen->sel = 0;
+    } else if (screen->sel == MENU_OUTBOX) {
       screen->mode = SCREEN_OUTBOX;
       screen->sel = 0;
     } else if (screen->sel == MENU_PEEPLE) {
@@ -583,15 +627,17 @@ static int on_press(screen_t *screen, const hal_t *hal) {
       settings_release(screen);
     } else if (screen->sel == MENU_BEEPLE) {
       screen->mode = SCREEN_BEEPLE;
-      screen->sel = screen->beeple;
+      screen->beeple_page = 0;
+      screen->beeple_focus = 0;
+      screen->beeple_slide_dir = 0;
     }
     return screen->mode == SCREEN_MENU ? NAV_STAY : NAV_PUSH;
   }
   if (screen->mode == SCREEN_BEEPLE) {
-    screen_set_beeple(screen, screen->sel);
-    screen->mode = SCREEN_MENU;
-    screen->sel = MENU_BEEPLE;
-    return NAV_POP;
+    if (!beeple_sliding(screen, hal) && screen->beeple_focus == 0 && screen->beeple_page == 0) {
+      screen->beeple_focus = 1;
+    }
+    return NAV_STAY;
   }
   if (screen->mode == SCREEN_PEEPLE) {
     if (screen->sel == PEEP_LOCATE) {
@@ -708,7 +754,7 @@ static int on_press(screen_t *screen, const hal_t *hal) {
     screen->has_compose_dest = true;
     screen->mode = SCREEN_CANNED;
     screen->sel = 0;
-    return NAV_PUSH;
+    return NAV_STAY;
   }
   if (screen->mode == SCREEN_CANNED) {
     int n = canned_msg_n(screen);
@@ -917,13 +963,13 @@ static void draw_menu(screen_t *screen, const hal_t *hal, uint8_t *buf) {
   int count = screen->inbox_n;
   bool pending = message_busy(screen->radio);
   char labels[MENU_N][24];
-  if (count) snprintf(labels[0], sizeof labels[0], "Inbox (%d)", count);
-  else str_copy_max(labels[0], sizeof labels[0], "Inbox", 16);
-  str_copy_max(labels[1], sizeof labels[1], "Compose", 16);
-  str_copy_max(labels[2], sizeof labels[2], pending ? "Outbox (*)" : "Outbox", 16);
-  str_copy_max(labels[3], sizeof labels[3], "Peeple", 16);
-  str_copy_max(labels[4], sizeof labels[4], "Settings", 16);
-  str_copy_max(labels[5], sizeof labels[5], "Beeple", 16);
+  str_copy_max(labels[MENU_COMPOSE], sizeof labels[MENU_COMPOSE], "Compose", 16);
+  if (count) snprintf(labels[MENU_INBOX], sizeof labels[MENU_INBOX], "Inbox (%d)", count);
+  else str_copy_max(labels[MENU_INBOX], sizeof labels[MENU_INBOX], "Inbox", 16);
+  str_copy_max(labels[MENU_OUTBOX], sizeof labels[MENU_OUTBOX], pending ? "Outbox (*)" : "Outbox", 16);
+  str_copy_max(labels[MENU_PEEPLE], sizeof labels[MENU_PEEPLE], "Peeple", 16);
+  str_copy_max(labels[MENU_BEEPLE], sizeof labels[MENU_BEEPLE], "Beeple", 16);
+  str_copy_max(labels[MENU_SETTINGS], sizeof labels[MENU_SETTINGS], "Settings", 16);
   draw_side_menu(screen, hal, buf, labels, MENU_N);
 }
 
@@ -934,24 +980,176 @@ static void draw_peeple(screen_t *screen, const hal_t *hal, uint8_t *buf) {
   draw_side_menu(screen, hal, buf, labels, PEEP_N);
 }
 
-static void draw_beeple(screen_t *screen, uint8_t *buf) {
-  const int y0 = 8;
-  const int pitch = 10;
-  int sel = screen->sel;
-  if (sel < 0 || sel >= BEEPLE_N) sel = 0;
-  int vis = 0;
-  while (vis < BEEPLE_N && y0 + vis * pitch + CHAR_H <= DISPLAY_HEIGHT) vis++;
-  int start = 0;
-  if (sel >= vis) start = sel - vis + 1;
-  for (int i = 0; i < vis; i++) {
-    int idx = start + i;
-    if (idx >= BEEPLE_N) break;
-    int y = y0 + i * pitch;
-    display_draw_text(buf, 4, y, beeple_at(idx)->name);
-    if (idx == sel) invert_cut_corner(buf, 1, y - 1, MENU_HALF - 2, pitch);
+static void draw_chevron(uint8_t *buf, int x, int y, int dir) {
+  for (int row = 0; row < 5; row++) {
+    int wide = row != 0 && row != 4;
+    int origin = (!wide && dir > 0) ? x + 1 : x;
+    int n = wide ? 2 : 1;
+    for (int col = 0; col < n; col++) {
+      int px = origin + col;
+      if (px >= 0 && px < MENU_HALF) display_set_pixel(buf, px, y + row, true);
+    }
   }
-  const beeple_def_t *b = beeple_at(sel);
-  blit_slot(buf, b->bits, b->w, b->h, MENU_HALF, 0, MENU_HALF, MENU_HALF);
+}
+
+static void draw_marked(uint8_t *buf, int y, const char *label, bool marked) {
+  int w = display_text_width_small(label);
+  int x = (MENU_HALF - w) / 2;
+  if (x < 6) x = 6;
+  display_draw_text_small(buf, x, y, label);
+  if (!marked) return;
+  display_invert_rect(buf, x, y, w, FONT_SMALL_H);
+  draw_chevron(buf, x - 5, y + 1, -1);
+  draw_chevron(buf, x + w + 2, y + 1, 1);
+}
+
+static void draw_icon(uint8_t *buf, int x, int y, const char *const *rows, int n) {
+  for (int row = 0; row < n; row++) {
+    for (int col = 0; rows[row][col]; col++) {
+      if (rows[row][col] == '#') display_set_pixel(buf, x + col, y + row, true);
+    }
+  }
+}
+
+static void draw_beeple_name(uint8_t *buf, const screen_t *screen, bool marked) {
+  const beeple_def_t *b = beeple_at(screen->beeple);
+  const char *name = b ? b->name : "";
+  draw_marked(buf, BEEPLE_BODY_Y, name, marked);
+}
+
+static void draw_beeple_flavor(uint8_t *buf) {
+  char lines[4][DISPLAY_WIDTH + 1];
+  int n = display_wrap("Lorem ipsum dolor sit amet, consectetur adipiscing elit.", 58, lines, 4);
+  for (int i = 0; i < n; i++) display_draw_text_small(buf, 3, BEEPLE_FLAVOR_Y + i * 8, lines[i]);
+}
+
+static void draw_beeple_select(uint8_t *buf, const screen_t *screen) {
+  draw_beeple_name(buf, screen, screen->beeple_focus == 1);
+  draw_beeple_flavor(buf);
+}
+
+static void draw_beeple_stats(uint8_t *buf, const screen_t *screen) {
+  static const char *battery[] = {"###", "###", "###", "######", "#.....#", "#######"};
+  static const char *spark[] = {"#....#", "....###", "#..#.#.#", "..###.###", "#..#.#.#", "....###", "#....#"};
+  static const char *heart[] = {".##...##", "#..#.#..#", "#...#...#", ".#.....#", "..#...#", "...#.#", "....#"};
+  static const char *bar[] = {
+      "#################", "#######.........#", "#######.........#", "#######.........#",
+      "#######.........#", "#######.........#", "#################",
+  };
+  static const char *bolt[] = {"#", "....###", "#..#.#.#", "..#..##.#", "#.#..#..#", "..#.....#", "#..#...#", "....###", "#"};
+  static const char *mail[] = {"#########", "##.....##", "#.#...#.#", "#..###..#", "#.......#", "#.......#", "#########"};
+  static const char *figure[] = {"#", "", "#..###...#", "..#.###.##", "#.########", "..#####.##", "#..###...#"};
+  static const char *clock[] = {".....###", ".##.#...#", "#..#....#", "#..#.....#", ".#....#..#", "..####.##"};
+  draw_beeple_name(buf, screen, false);
+  draw_icon(buf, 3, 30, battery, 6);
+  display_draw_text_small(buf, 14, 29, "6.5k");
+  draw_icon(buf, 34, 29, spark, 7);
+  display_draw_text_small(buf, 46, 29, "87");
+  draw_icon(buf, 2, 38, heart, 7);
+  draw_icon(buf, 14, 38, bar, 7);
+  draw_icon(buf, 34, 37, bolt, 9);
+  display_draw_text_small(buf, 46, 38, "45 s");
+  draw_icon(buf, 2, 47, mail, 7);
+  display_draw_text_small(buf, 14, 47, "781");
+  draw_icon(buf, 34, 47, figure, 7);
+  display_draw_text_small(buf, 46, 48, "14 kg");
+  draw_icon(buf, 2, 56, clock, 6);
+  display_draw_text_small(buf, 14, 56, "42 hr");
+  for (int y = 29; y <= 61; y += 2) display_set_pixel(buf, 34, y, true);
+}
+
+static void draw_beeple_body(uint8_t *buf, const screen_t *screen, int page) {
+  if (page == 0) draw_beeple_select(buf, screen);
+  else draw_beeple_stats(buf, screen);
+}
+
+static void copy_col(uint8_t *dst, const uint8_t *src, int dx, int sx, int y0, int y1) {
+  if (dx < 0 || sx < 0 || dx >= DISPLAY_WIDTH || sx >= DISPLAY_WIDTH) return;
+  for (int y = y0; y < y1; y++) display_set_pixel(dst, dx, y, display_get_pixel(src, sx, y));
+}
+
+static void paint_slide(uint8_t *dst, const uint8_t *src, int x0, int y0, int w, int h, int shift,
+                        int dir, bool incoming) {
+  int y1 = y0 + h;
+  if (dir > 0) {
+    if (!incoming) {
+      for (int x = 0; x < w - shift; x++) copy_col(dst, src, x0 + x, x0 + x + shift, y0, y1);
+    } else {
+      for (int x = w - shift; x < w; x++)
+        copy_col(dst, src, x0 + x, x0 + x - (w - shift), y0, y1);
+    }
+  } else if (!incoming) {
+    for (int x = shift; x < w; x++) copy_col(dst, src, x0 + x, x0 + x - shift, y0, y1);
+  } else {
+    for (int x = 0; x < shift; x++) copy_col(dst, src, x0 + x, x0 + x + (w - shift), y0, y1);
+  }
+}
+
+static void draw_art_id(uint8_t *buf, int id) {
+  const beeple_def_t *b = beeple_at(id);
+  if (!b) return;
+  blit_slot(buf, b->bits, b->w, b->h, MENU_HALF, 0, MENU_HALF, DISPLAY_HEIGHT);
+}
+
+static bool beeple_slide_shift(const screen_t *screen, const hal_t *hal, int *shift) {
+  if (screen->beeple_slide_dir == 0) return false;
+  uint32_t elapsed = elapsed_u32(hal->now_ms(hal->ctx), screen->beeple_slide_start);
+  if (elapsed >= SCREEN_SLIDE_MS) return false;
+  int s = (int)((elapsed * (uint32_t)MENU_HALF) / SCREEN_SLIDE_MS);
+  if (s > MENU_HALF) s = MENU_HALF;
+  *shift = s;
+  return true;
+}
+
+static void draw_beeple_column(screen_t *screen, uint8_t *buf, bool sliding, int shift) {
+  static const char *tabs[BEEPLE_PAGE_N] = {"Select", "Stats"};
+  int page = screen->beeple_page;
+  draw_marked(buf, 13, tabs[page], screen->beeple_focus == 0);
+  if (!sliding) {
+    draw_beeple_body(buf, screen, page);
+    return;
+  }
+  uint8_t tmp[DISPLAY_BUF_LEN];
+  if (screen->beeple_focus) {
+    draw_beeple_name(buf, screen, true);
+    display_clear(tmp);
+    draw_beeple_flavor(tmp);
+    paint_slide(buf, tmp, 0, BEEPLE_FLAVOR_Y, MENU_HALF, DISPLAY_HEIGHT - BEEPLE_FLAVOR_Y, shift,
+                screen->beeple_slide_dir, false);
+    display_clear(tmp);
+    draw_beeple_flavor(tmp);
+    paint_slide(buf, tmp, 0, BEEPLE_FLAVOR_Y, MENU_HALF, DISPLAY_HEIGHT - BEEPLE_FLAVOR_Y, shift,
+                screen->beeple_slide_dir, true);
+    return;
+  }
+  int from = screen->beeple_slide_from;
+  display_clear(tmp);
+  draw_beeple_body(tmp, screen, from);
+  paint_slide(buf, tmp, 0, BEEPLE_BODY_Y, MENU_HALF, DISPLAY_HEIGHT - BEEPLE_BODY_Y, shift,
+              screen->beeple_slide_dir, false);
+  display_clear(tmp);
+  draw_beeple_body(tmp, screen, page);
+  paint_slide(buf, tmp, 0, BEEPLE_BODY_Y, MENU_HALF, DISPLAY_HEIGHT - BEEPLE_BODY_Y, shift,
+              screen->beeple_slide_dir, true);
+}
+
+static void draw_beeple(screen_t *screen, const hal_t *hal, uint8_t *buf) {
+  int shift = 0;
+  bool sliding = beeple_slide_shift(screen, hal, &shift);
+  if (!sliding) screen->beeple_slide_dir = 0;
+  if (sliding && screen->beeple_focus) {
+    uint8_t tmp[DISPLAY_BUF_LEN];
+    display_clear(tmp);
+    draw_art_id(tmp, screen->beeple_slide_from);
+    paint_slide(buf, tmp, MENU_HALF, 0, MENU_HALF, DISPLAY_HEIGHT, shift, screen->beeple_slide_dir, false);
+    display_clear(tmp);
+    draw_art_id(tmp, screen->beeple);
+    paint_slide(buf, tmp, MENU_HALF, 0, MENU_HALF, DISPLAY_HEIGHT, shift, screen->beeple_slide_dir, true);
+  } else {
+    draw_menu_art(screen, buf);
+  }
+  draw_slant_header(screen, buf, hal, "BEEPLE");
+  draw_beeple_column(screen, buf, sliding, shift);
 }
 
 static void draw_inbox(screen_t *screen, const hal_t *hal, uint8_t *buf) {
@@ -1577,8 +1775,13 @@ void screen_input(screen_t *screen, const hal_t *hal) {
   if (hal->back_poll(hal->ctx)) {
     screen_mode_t before = screen->mode;
     on_back(screen, hal);
-    if (screen->mode != before) arm_slide(screen, hal, NAV_POP);
     woke = true;
+    if (before == SCREEN_CANNED && screen->mode == SCREEN_COMPOSE) {
+      drop_encoder(hal);
+      light_wake(screen, hal);
+      return;
+    }
+    if (screen->mode != before) arm_slide(screen, hal, NAV_POP);
   }
   if (slide_playing(screen, hal)) {
     while (hal->encoder_poll(hal->ctx) != ENC_NONE) woke = true;
@@ -1593,12 +1796,21 @@ void screen_input(screen_t *screen, const hal_t *hal) {
         screen->mode == SCREEN_LOCATING) {
       continue;
     }
-    if (ev == ENC_CW) on_turn(screen, 1);
-    else if (ev == ENC_CCW) on_turn(screen, -1);
+    if (ev == ENC_CW || ev == ENC_CCW) {
+      int dir = ev == ENC_CW ? 1 : -1;
+      if (screen->mode == SCREEN_BEEPLE) beeple_turn(screen, hal, dir);
+      else on_turn(screen, dir);
+    }
     else if (ev == ENC_PRESS) {
+      screen_mode_t before = screen->mode;
       int dir = on_press(screen, hal);
       if (dir) {
         arm_slide(screen, hal, dir);
+        drop_encoder(hal);
+        break;
+      }
+      if (screen->mode == SCREEN_BEEPLE ||
+          (before == SCREEN_COMPOSE && screen->mode == SCREEN_CANNED)) {
         drop_encoder(hal);
         break;
       }
@@ -1631,7 +1843,7 @@ void screen_render(screen_t *screen, const hal_t *hal) {
   }
   else if (screen->mode == SCREEN_PAIR) draw_pair(screen, hal, buf);
   else if (screen->mode == SCREEN_SETTINGS) draw_settings(screen, hal, buf);
-  else if (screen->mode == SCREEN_BEEPLE) draw_beeple(screen, buf);
+  else if (screen->mode == SCREEN_BEEPLE) draw_beeple(screen, hal, buf);
   else if (screen->mode == SCREEN_TRACKASK) draw_track_ask(screen, hal, buf);
   else if (screen->mode == SCREEN_TRACKED) draw_tracked(screen, hal, buf);
   else if (screen->mode == SCREEN_NAMEEDIT || screen->mode == SCREEN_BODYEDIT) {
@@ -1792,5 +2004,6 @@ void screen_reset(screen_t *screen) {
   screen->vibe_test = false;
   screen->beep_test = false;
   screen->slide_dir = 0;
+  screen->beeple_slide_dir = 0;
   display_clear(screen->buf);
 }

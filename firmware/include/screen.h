@@ -134,6 +134,11 @@ typedef struct {
   uint32_t slide_start;
   screen_mode_t slide_mode;
   int8_t slide_dir;
+  int8_t beeple_page;
+  int8_t beeple_focus;
+  int8_t beeple_slide_dir;
+  int8_t beeple_slide_from;
+  uint32_t beeple_slide_start;
 } screen_t;
 
 void screen_init(screen_t *screen, identity_store_t *identity, contact_book_t *contacts,

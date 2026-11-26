@@ -111,7 +111,7 @@ static void test_settings_release(void) {
   CHECK(!b.screen.tz_edit && !b.screen.light_edit, "a tracked warning drops a grabbed value");
 
   b.screen.mode = SCREEN_MENU;
-  b.screen.sel = 4;
+  b.screen.sel = 5;
   b.screen.tz_edit = true;
   b.screen.light_edit = true;
   emu_hal_push_encoder(&ram, ENC_PRESS);
@@ -244,7 +244,7 @@ static void test_slide(void) {
   screen_render(&b.screen, &hal);
   memcpy(menu, ram.display, DISPLAY_BUF_LEN);
 
-  b.screen.sel = 4;
+  b.screen.sel = 5;
   emu_hal_push_encoder(&ram, ENC_PRESS);
   screen_input(&b.screen, &hal);
   CHECK(b.screen.mode == SCREEN_SETTINGS, "press opens settings");
@@ -313,7 +313,7 @@ static void test_slide(void) {
   CHECK(cols_eq(mid, DISPLAY_WIDTH / 2, settled, 0, DISPLAY_WIDTH / 2), "a dark slide keeps the new half");
 
   b.screen.mode = SCREEN_MENU;
-  b.screen.sel = 4;
+  b.screen.sel = 5;
   b.screen.dark_mode = false;
   b.screen.slide_dir = 0;
   ram.now_ms = 9000;
@@ -345,6 +345,120 @@ static void test_slide(void) {
   pass("slide");
 }
 
+static void test_stay_press(void) {
+  beeper_t b;
+  emu_hal_t ram;
+  hal_t hal;
+  contact_t ada, bea;
+  beeper_init(&b);
+  emu_hal_init(&ram, &hal);
+  memset(&ada, 0, sizeof ada);
+  memset(&bea, 0, sizeof bea);
+  ada.node_id[0] = 1;
+  bea.node_id[0] = 2;
+  str_copy_max(ada.name, sizeof ada.name, "Ada", PAGE_FROM_MAX);
+  str_copy_max(bea.name, sizeof bea.name, "Bea", PAGE_FROM_MAX);
+  contacts_upsert(&b.contacts, &ada);
+  contacts_upsert(&b.contacts, &bea);
+
+  b.screen.mode = SCREEN_COMPOSE;
+  b.screen.sel = 0;
+  ram.now_ms = 1000;
+  emu_hal_push_encoder(&ram, ENC_PRESS);
+  emu_hal_push_encoder(&ram, ENC_CW);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.mode == SCREEN_CANNED && b.screen.sel == 0 && b.screen.slide_dir == 0,
+        "a contact press opens canned without sliding or turning");
+
+  emu_hal_push_back(&ram);
+  emu_hal_push_encoder(&ram, ENC_CW);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.mode == SCREEN_COMPOSE && b.screen.slide_dir == 0 && b.screen.sel == 0,
+        "back from canned does not slide or turn");
+
+  b.screen.mode = SCREEN_BEEPLE;
+  b.screen.beeple_page = 0;
+  b.screen.beeple_focus = 0;
+  b.screen.beeple_slide_dir = 0;
+  screen_set_beeple(&b.screen, 0);
+  emu_hal_push_encoder(&ram, ENC_PRESS);
+  emu_hal_push_encoder(&ram, ENC_CW);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.beeple_focus == 1 && b.screen.beeple == 0,
+        "a beeple press does not also change the mascot");
+  pass("stay press");
+}
+
+static bool pixel(const uint8_t *buf, int x, int y) {
+  return display_get_pixel(buf, x, y);
+}
+
+static void test_beeple_windows(void) {
+  beeper_t b;
+  emu_hal_t ram;
+  hal_t hal;
+  uint8_t spooder[DISPLAY_BUF_LEN];
+  uint8_t teef[DISPLAY_BUF_LEN];
+  beeper_init(&b);
+  emu_hal_init(&ram, &hal);
+  ram.now_ms = 1000;
+
+  b.screen.mode = SCREEN_BEEPLE;
+  b.screen.beeple_page = 0;
+  b.screen.beeple_focus = 1;
+  screen_set_beeple(&b.screen, 10);
+  screen_render(&b.screen, &hal);
+  memcpy(spooder, ram.display, DISPLAY_BUF_LEN);
+
+  screen_set_beeple(&b.screen, 11);
+  screen_render(&b.screen, &hal);
+  memcpy(teef, ram.display, DISPLAY_BUF_LEN);
+
+  bool art_differs = false;
+  for (int y = 16; y < DISPLAY_HEIGHT && !art_differs; y++) {
+    for (int x = 64; x < DISPLAY_WIDTH; x++) {
+      if (pixel(spooder, x, y) != pixel(teef, x, y)) art_differs = true;
+    }
+  }
+  CHECK(art_differs, "spooder and teef are different pictures");
+
+  screen_set_beeple(&b.screen, 10);
+  emu_hal_push_encoder(&ram, ENC_CW);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.beeple == 11 && b.screen.beeple_slide_from == 10 && b.screen.beeple_slide_dir == 1,
+        "a name turn slides from the previous beeple");
+
+  ram.now_ms = 1000 + SCREEN_SLIDE_MS / 2;
+  screen_render(&b.screen, &hal);
+  const int half = 64;
+  const int shift = half / 2;
+  bool art_ok = true;
+  bool flavor_ok = true;
+  bool name_ok = true;
+  for (int y = 16; y < DISPLAY_HEIGHT; y++) {
+    for (int x = 0; x < half; x++) {
+      int sx = x < half - shift ? 64 + x + shift : 64 + x - (half - shift);
+      const uint8_t *src = x < half - shift ? spooder : teef;
+      if (pixel(ram.display, 64 + x, y) != pixel(src, sx, y)) art_ok = false;
+    }
+  }
+  for (int y = 32; y < DISPLAY_HEIGHT; y++) {
+    for (int x = 0; x < half; x++) {
+      int sx = x < half - shift ? x + shift : x - (half - shift);
+      if (pixel(ram.display, x, y) != pixel(teef, sx, y)) flavor_ok = false;
+    }
+  }
+  for (int y = 22; y < 29; y++) {
+    for (int x = 0; x < half; x++) {
+      if (pixel(ram.display, x, y) != pixel(teef, x, y)) name_ok = false;
+    }
+  }
+  CHECK(art_ok, "the mascot slides in the right 64");
+  CHECK(flavor_ok, "the flavor slides in the left 64");
+  CHECK(name_ok, "the name stays with the beeple just chosen");
+  pass("beeple windows");
+}
+
 int main(void) {
   test_backlight_timer();
   test_settings_release();
@@ -352,6 +466,8 @@ int main(void) {
   test_alert_keeps_chirp();
   test_vibe_pulse();
   test_slide();
+  test_stay_press();
+  test_beeple_windows();
   printf("%d passed, %d failed\n", g_pass, g_fail);
   return g_fail ? 1 : 0;
 }
