@@ -124,6 +124,8 @@ static void test_roundtrip(void) {
   a.screen.light_mode = LIGHT_5M;
   a.screen.tz_hours = -4;
   a.screen.beeple = 3;
+  a.screen.steps_saved[2] = 1000;
+  a.screen.steps_saved[11] = 42;
   CHECK(store_save(&a, &hal), "save");
 
   beeper_t b;
@@ -165,6 +167,10 @@ static void test_roundtrip(void) {
   CHECK_EQ(b.screen.tz_hours, -4, "time zone is saved");
   CHECK_EQ(b.screen.beeple, 3, "beeple is saved");
   CHECK(b.screen.menu_art_w == 64, "beeple art applied");
+  CHECK_EQ(b.screen.steps[2], 1000, "steps are saved");
+  CHECK_EQ(b.screen.steps_saved[2], 1000, "saved steps match the live count");
+  CHECK_EQ(b.screen.steps[11], 42, "each beeple keeps its own steps");
+  CHECK_EQ(b.screen.steps[0], 0, "another beeple stays at zero");
   pass("store roundtrip: node_id, name, contacts, canned, inbox, outbox");
 }
 

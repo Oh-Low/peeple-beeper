@@ -15,6 +15,7 @@ void board_random_fill(uint8_t *buf, size_t len);
 uint32_t board_now_ms(void);
 void board_gps_power(bool on);
 bool board_heading(heading_sample_t *out);
+bool board_accel(accel_sample_t *out);
 bool board_radio_poll(raw_frame_t *out);
 void board_radio_send(const uint8_t *bytes, size_t len, bool whisper);
 void board_radio_continuous(bool on);

@@ -522,6 +522,27 @@ bool board_heading(heading_sample_t *out) {
   return true;
 }
 
+static int milli_g(int counts) {
+  /* Same scale as the still check: 16384 counts is 1 g. */
+  int32_t v = (int32_t)counts * 1000 / 16384;
+  if (v > 32767) return 32767;
+  if (v < -32768) return -32768;
+  return (int)v;
+}
+
+bool board_accel(accel_sample_t *out) {
+  uint8_t acc[6];
+  if (!out) return false;
+  memset(out, 0, sizeof *out);
+  if (!compass_ok) return false;
+  if (!i2c_read_regs(0x19, 0x28 | 0x80, acc, 6)) return false;
+  out->x = (int16_t)milli_g(le16(acc));
+  out->y = (int16_t)milli_g(le16(acc + 2));
+  out->z = (int16_t)milli_g(le16(acc + 4));
+  out->motor = vibe_until != 0 && (int32_t)(vibe_until - rtc_ms()) > 0;
+  return true;
+}
+
 static int wait_busy(uint32_t us) {
   uint32_t start = cycles();
   while (pin_get(D11)) {

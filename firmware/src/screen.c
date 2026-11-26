@@ -22,6 +22,13 @@
 #define PEEP_LOCATE 0
 #define PEEP_CONTACT 1
 
+#define STEP_POLL_MS 40
+#define STEP_QUIET_MS 30000u
+/* A save erases flash. Unsaved steps wait until the unit has been still for
+   30 s, and two saves are at least 15 min apart. A walk with no pause is
+   saved every 15 min. */
+#define STEP_NVM_MS (15u * 60u * 1000u)
+
 #define SET_LABEL_X 4
 #define SET_LABEL_END 60
 #define SET_RULE_X 63
@@ -1028,6 +1035,30 @@ static void draw_beeple_select(uint8_t *buf, const screen_t *screen) {
   draw_beeple_flavor(buf);
 }
 
+static void format_steps(char *out, size_t cap, uint32_t n) {
+  if (n < 10000u) {
+    snprintf(out, cap, "%u", n);
+    return;
+  }
+  if (n < 100000u) {
+    snprintf(out, cap, "%u.%uk", n / 1000u, (n % 1000u) / 100u);
+    return;
+  }
+  if (n < 1000000u) {
+    snprintf(out, cap, "%uk", n / 1000u);
+    return;
+  }
+  if (n < 10000000u) {
+    snprintf(out, cap, "%u.%um", n / 1000000u, (n % 1000000u) / 100000u);
+    return;
+  }
+  if (n < 1000000000u) {
+    snprintf(out, cap, "%um", n / 1000000u);
+    return;
+  }
+  snprintf(out, cap, "%u.%ub", n / 1000000000u, (n % 1000000000u) / 100000000u);
+}
+
 static void draw_beeple_stats(uint8_t *buf, const screen_t *screen) {
   static const char *battery[] = {"###", "###", "###", "######", "#.....#", "#######"};
   static const char *spark[] = {"#....#", "....###", "#..#.#.#", "..###.###", "#..#.#.#", "....###", "#....#"};
@@ -1040,9 +1071,13 @@ static void draw_beeple_stats(uint8_t *buf, const screen_t *screen) {
   static const char *mail[] = {"#########", "##.....##", "#.#...#.#", "#..###..#", "#.......#", "#.......#", "#########"};
   static const char *figure[] = {"#", "", "#..###...#", "..#.###.##", "#.########", "..#####.##", "#..###...#"};
   static const char *clock[] = {".....###", ".##.#...#", "#..#....#", "#..#.....#", ".#....#..#", "..####.##"};
+  int step_id = screen->beeple;
+  char steps[16];
+  if (step_id < 0 || step_id >= BEEPLE_N) step_id = 0;
+  format_steps(steps, sizeof steps, screen->steps[step_id]);
   draw_beeple_name(buf, screen, false);
   draw_icon(buf, 3, 30, battery, 6);
-  display_draw_text_small(buf, 14, 29, "6.5k");
+  display_draw_text_small(buf, 14, 29, steps);
   draw_icon(buf, 34, 29, spark, 7);
   display_draw_text_small(buf, 46, 29, "87");
   draw_icon(buf, 2, 38, heart, 7);
@@ -1890,6 +1925,48 @@ void screen_poll_locate(screen_t *screen) {
   screen->loc_capture_wait = false;
 }
 
+static void steps_commit(screen_t *screen, uint32_t now) {
+  bool quiet;
+  bool held;
+  bool cooled;
+  if (!screen->steps_holding) return;
+  if (memcmp(screen->steps, screen->steps_saved, sizeof screen->steps) == 0) {
+    screen->steps_holding = false;
+    return;
+  }
+  quiet = elapsed_u32(now, screen->steps_last_ms) >= STEP_QUIET_MS;
+  held = elapsed_u32(now, screen->steps_hold_ms) >= STEP_NVM_MS;
+  cooled = !screen->steps_saved_ms || elapsed_u32(now, screen->steps_saved_ms) >= STEP_NVM_MS;
+  if (!cooled || (!quiet && !held)) return;
+  memcpy(screen->steps_saved, screen->steps, sizeof screen->steps);
+  screen->steps_saved_ms = now ? now : 1;
+  screen->steps_holding = false;
+}
+
+void screen_poll_steps(screen_t *screen, const hal_t *hal) {
+  accel_sample_t sample;
+  uint32_t now;
+  int id;
+  if (!screen || !hal) return;
+  now = hal->now_ms(hal->ctx);
+  if (hal->accel && (!screen->step_sampled || elapsed_u32(now, screen->step_sample_ms) >= STEP_POLL_MS)) {
+    screen->step_sampled = true;
+    screen->step_sample_ms = now;
+    if (hal->accel(hal->ctx, &sample) && step_detect(&screen->step_det, &sample, now)) {
+      id = screen->beeple;
+      if (id >= 0 && id < BEEPLE_N && screen->steps[id] != UINT32_MAX) {
+        screen->steps[id]++;
+        screen->steps_last_ms = now;
+        if (!screen->steps_holding) {
+          screen->steps_holding = true;
+          screen->steps_hold_ms = now;
+        }
+      }
+    }
+  }
+  steps_commit(screen, now);
+}
+
 void screen_poll_pose(screen_t *screen, const hal_t *hal) {
   if (!screen || screen->mode != SCREEN_LOCREAD || screen->loc_busy) return;
   if (!hal->heading) return;
@@ -2005,5 +2082,13 @@ void screen_reset(screen_t *screen) {
   screen->beep_test = false;
   screen->slide_dir = 0;
   screen->beeple_slide_dir = 0;
+  memset(screen->steps, 0, sizeof screen->steps);
+  memset(screen->steps_saved, 0, sizeof screen->steps_saved);
+  screen->steps_saved_ms = 0;
+  screen->steps_last_ms = 0;
+  screen->steps_hold_ms = 0;
+  screen->steps_holding = false;
+  screen->step_sampled = false;
+  memset(&screen->step_det, 0, sizeof screen->step_det);
   display_clear(screen->buf);
 }

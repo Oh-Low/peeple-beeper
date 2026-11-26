@@ -94,13 +94,16 @@ $(BUILD)/gps_test: $(TEST_DIR)/gps_test.c $(FW_LINK) $(HAL_FEATHER_SRC) | $(BUIL
 $(BUILD)/heading_test: $(TEST_DIR)/heading_test.c $(FW_LINK) | $(BUILD)
 	$(CC) $(CFLAGS) -Ihal/ram -o $@ $(TEST_DIR)/heading_test.c $(FW_LINK)
 
+$(BUILD)/steps_test: $(TEST_DIR)/steps_test.c $(FW_LINK) | $(BUILD)
+	$(CC) $(CFLAGS) -Ihal/ram -o $@ $(TEST_DIR)/steps_test.c $(FW_LINK)
+
 $(BUILD)/receiver_test: $(TEST_DIR)/receiver_test.c $(TEST_DIR)/locate_harness.h $(FW_LINK) | $(BUILD)
 	$(CC) $(CFLAGS) -Ihal/ram -o $@ $(TEST_DIR)/receiver_test.c $(FW_LINK)
 
 $(BUILD)/locate_test: $(TEST_DIR)/locate_test.c $(TEST_DIR)/locate_harness.h $(FW_LINK) | $(BUILD)
 	$(CC) $(CFLAGS) -Ihal/ram -o $@ $(TEST_DIR)/locate_test.c $(FW_LINK)
 
-test: $(BUILD)/message_test $(BUILD)/relay_test $(BUILD)/store_test $(BUILD)/screen_test $(BUILD)/mesh_test $(BUILD)/seed_test $(BUILD)/pair_test $(BUILD)/gps_test $(BUILD)/heading_test $(BUILD)/receiver_test $(BUILD)/locate_test
+test: $(BUILD)/message_test $(BUILD)/relay_test $(BUILD)/store_test $(BUILD)/screen_test $(BUILD)/mesh_test $(BUILD)/seed_test $(BUILD)/pair_test $(BUILD)/gps_test $(BUILD)/heading_test $(BUILD)/steps_test $(BUILD)/receiver_test $(BUILD)/locate_test
 	$(BUILD)/message_test
 	$(BUILD)/relay_test
 	$(BUILD)/store_test
@@ -110,6 +113,7 @@ test: $(BUILD)/message_test $(BUILD)/relay_test $(BUILD)/store_test $(BUILD)/scr
 	$(BUILD)/pair_test
 	$(BUILD)/gps_test
 	$(BUILD)/heading_test
+	$(BUILD)/steps_test
 	$(BUILD)/receiver_test
 	$(BUILD)/locate_test
 

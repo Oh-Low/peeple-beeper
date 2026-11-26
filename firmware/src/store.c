@@ -11,7 +11,7 @@
 #define MAGIC1 0x42
 #define MAGIC2 0x30
 #define MAGIC3 0x31
-#define STORE_VERSION 11
+#define STORE_VERSION 12
 #define STATUS_SENDING 0
 #define STATUS_SENT 1
 #define STATUS_FAILED 2
@@ -203,6 +203,9 @@ static size_t encode_slice(beeper_t *b, const inbox_row_t *inbox, int inbox_n,
   if (!w_u8(&w, (uint8_t)b->screen.beeple)) return (size_t)-1;
   if (!w_u8(&w, b->screen.light_mode)) return (size_t)-1;
   if (!w_u8(&w, (uint8_t)b->screen.tz_hours)) return (size_t)-1;
+  for (int i = 0; i < BEEPLE_N; i++) {
+    if (!w_u32(&w, b->screen.steps_saved[i])) return (size_t)-1;
+  }
   return w.o;
 }
 
@@ -337,6 +340,11 @@ bool store_apply(beeper_t *b, const uint8_t *bytes, size_t len) {
   int8_t tz_hours = 0;
   if (ver >= 10) tz_hours = (int8_t)r_u8(&r);
   if (tz_hours < -12 || tz_hours > 14) tz_hours = 0;
+  uint32_t steps_saved[BEEPLE_N];
+  memset(steps_saved, 0, sizeof steps_saved);
+  if (ver >= 12) {
+    for (int i = 0; i < BEEPLE_N; i++) steps_saved[i] = r_u32(&r);
+  }
 
   if (!r.ok || r.o != r.len) return false;
 
@@ -368,6 +376,9 @@ bool store_apply(beeper_t *b, const uint8_t *bytes, size_t len) {
   b->screen.dark_mode = dark_mode;
   b->screen.light_mode = light_mode;
   b->screen.tz_hours = tz_hours;
+  memcpy(b->screen.steps, steps_saved, sizeof steps_saved);
+  memcpy(b->screen.steps_saved, steps_saved, sizeof steps_saved);
+  b->screen.steps_holding = false;
   screen_set_beeple(&b->screen, beeple);
   return true;
 }

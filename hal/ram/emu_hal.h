@@ -31,6 +31,8 @@ typedef struct {
   bool still;
   int heading_deg;
   uint32_t vibe_until;
+  bool accel_set;
+  int16_t ax, ay, az;
 } emu_hal_t;
 
 void emu_hal_init(emu_hal_t *r, hal_t *out);
@@ -39,3 +41,4 @@ void emu_hal_push_back(emu_hal_t *r);
 void emu_hal_push_raw(emu_hal_t *r, const uint8_t *bytes, size_t len, int8_t rssi);
 void emu_hal_set_gps(emu_hal_t *r, const gps_fix_t *fix);
 void emu_hal_set_heading(emu_hal_t *r, int tilt_deg, bool still, int heading_deg);
+void emu_hal_set_accel(emu_hal_t *r, int x, int y, int z);

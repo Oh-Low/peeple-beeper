@@ -55,6 +55,15 @@ typedef struct {
   int heading_deg;
 } heading_sample_t;
 
+/* Accelerometer in milli-g. 1000 on one axis is 1 g. motor is set while a vibe
+   is running, so a step counter can ignore the motor. */
+typedef struct {
+  int16_t x;
+  int16_t y;
+  int16_t z;
+  bool motor;
+} accel_sample_t;
+
 /* pct is 0–100. charging is USB power with the cell still below full.
    minutes is the estimate until full, and 0 when charging is false. */
 typedef struct {
@@ -87,5 +96,6 @@ typedef struct hal {
   bool (*gps_fix)(void *ctx, gps_fix_t *out);
   void (*gps_power)(void *ctx, bool on);
   bool (*heading)(void *ctx, heading_sample_t *out);
+  bool (*accel)(void *ctx, accel_sample_t *out);
   void (*backlight)(void *ctx, bool on);
 } hal_t;

@@ -126,6 +126,11 @@ static bool heading_fn(void *ctx, heading_sample_t *out) {
   return board_heading(out);
 }
 
+static bool accel_fn(void *ctx, accel_sample_t *out) {
+  (void)ctx;
+  return board_accel(out);
+}
+
 static void gps_power_fn(void *ctx, bool on) {
   (void)ctx;
   if (on && !gps_on) memset(&feather_fix, 0, sizeof feather_fix);
@@ -182,6 +187,7 @@ void feather_hal_init(hal_t *out) {
   out->gps_fix = gps_fix_fn;
   out->gps_power = gps_power_fn;
   out->heading = heading_fn;
+  out->accel = accel_fn;
   out->backlight = backlight_fn;
 }
 
@@ -196,6 +202,10 @@ __attribute__((weak)) void board_random_fill(uint8_t *buf, size_t len) {
 __attribute__((weak)) uint32_t board_now_ms(void) { return 0; }
 __attribute__((weak)) void board_gps_power(bool on) { (void)on; }
 __attribute__((weak)) bool board_heading(heading_sample_t *out) {
+  if (out) memset(out, 0, sizeof *out);
+  return false;
+}
+__attribute__((weak)) bool board_accel(accel_sample_t *out) {
   if (out) memset(out, 0, sizeof *out);
   return false;
 }

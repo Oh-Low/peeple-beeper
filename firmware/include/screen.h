@@ -8,6 +8,7 @@
 #include "locate.h"
 #include "message.h"
 #include "pair.h"
+#include "steps.h"
 #include "textedit.h"
 
 #include <stdbool.h>
@@ -139,6 +140,16 @@ typedef struct {
   int8_t beeple_slide_dir;
   int8_t beeple_slide_from;
   uint32_t beeple_slide_start;
+  /* Live counts. steps_saved is what the store writes, and it trails these. */
+  uint32_t steps[BEEPLE_N];
+  uint32_t steps_saved[BEEPLE_N];
+  uint32_t steps_saved_ms;
+  uint32_t steps_last_ms;
+  uint32_t steps_hold_ms;
+  bool steps_holding;
+  bool step_sampled;
+  uint32_t step_sample_ms;
+  step_det_t step_det;
 } screen_t;
 
 void screen_init(screen_t *screen, identity_store_t *identity, contact_book_t *contacts,
@@ -147,6 +158,7 @@ void screen_init(screen_t *screen, identity_store_t *identity, contact_book_t *c
 void screen_set_beeple(screen_t *screen, int id);
 void screen_poll_locate(screen_t *screen);
 void screen_poll_pose(screen_t *screen, const hal_t *hal);
+void screen_poll_steps(screen_t *screen, const hal_t *hal);
 /* Returns true when a tracking prompt or warning just took the screen. */
 bool screen_poll_track(screen_t *screen, const hal_t *hal);
 void screen_on_page(screen_t *screen, const hal_t *hal, const page_t *page);

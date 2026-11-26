@@ -142,6 +142,25 @@ static bool motor_running(const emu_hal_t *r) {
   return r->vibe_ms != 0 && (int32_t)(r->vibe_until - r->now_ms) > 0;
 }
 
+static bool accel_fn(void *ctx, accel_sample_t *out) {
+  emu_hal_t *r = ctx;
+  if (!out) return false;
+  memset(out, 0, sizeof *out);
+  out->motor = motor_running(r);
+  if (r->accel_set) {
+    out->x = r->ax;
+    out->y = r->ay;
+    out->z = r->az;
+    return true;
+  }
+  out->z = 1000;
+  if (!r->still) {
+    uint32_t t = r->now_ms % 500u;
+    out->z = t < 120u ? 1500 : 900;
+  }
+  return true;
+}
+
 static bool heading_fn(void *ctx, heading_sample_t *out) {
   emu_hal_t *r = ctx;
   if (!out) return false;
@@ -199,6 +218,7 @@ void emu_hal_init(emu_hal_t *r, hal_t *out) {
   out->gps_fix = gps_fix_fn;
   out->gps_power = gps_power_fn;
   out->heading = heading_fn;
+  out->accel = accel_fn;
   out->backlight = backlight_fn;
 }
 
@@ -208,6 +228,20 @@ void emu_hal_push_encoder(emu_hal_t *r, encoder_event_t ev) {
 
 void emu_hal_push_back(emu_hal_t *r) {
   if (r->back_n < 8) r->back_n++;
+}
+
+void emu_hal_set_accel(emu_hal_t *r, int x, int y, int z) {
+  if (!r) return;
+  if (x > 32767) x = 32767;
+  if (x < -32768) x = -32768;
+  if (y > 32767) y = 32767;
+  if (y < -32768) y = -32768;
+  if (z > 32767) z = 32767;
+  if (z < -32768) z = -32768;
+  r->accel_set = true;
+  r->ax = (int16_t)x;
+  r->ay = (int16_t)y;
+  r->az = (int16_t)z;
 }
 
 void emu_hal_set_heading(emu_hal_t *r, int tilt_deg, bool still, int heading_deg) {
