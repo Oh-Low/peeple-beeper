@@ -3,6 +3,7 @@
 #include "canned.h"
 #include "contacts.h"
 #include "display.h"
+#include "fishing.h"
 #include "hal.h"
 #include "identity.h"
 #include "locate.h"
@@ -150,6 +151,26 @@ typedef struct {
   bool step_sampled;
   uint32_t step_sample_ms;
   step_det_t step_det;
+  uint32_t steps_today[BEEPLE_N];
+  uint32_t steps_today_saved[BEEPLE_N];
+  /* Local day the today-count belongs to. year 0 means no GPS date yet. */
+  uint16_t steps_day_year;
+  uint8_t steps_day_month;
+  uint8_t steps_day_mday;
+  uint16_t steps_day_min;
+  int8_t steps_day_tz;
+  bool steps_day_known;
+  uint16_t steps_day_year_saved;
+  uint8_t steps_day_month_saved;
+  uint8_t steps_day_mday_saved;
+  uint16_t steps_day_min_saved;
+  int8_t steps_day_tz_saved;
+  bool steps_day_known_saved;
+  /* 0 is today, 1 is all time. The row under Stats. */
+  int8_t beeple_span;
+  /* 0 is fishing, 1 is farming. The row under Games. */
+  int8_t beeple_game;
+  fishing_t fish;
 } screen_t;
 
 void screen_init(screen_t *screen, identity_store_t *identity, contact_book_t *contacts,
@@ -159,6 +180,7 @@ void screen_set_beeple(screen_t *screen, int id);
 void screen_poll_locate(screen_t *screen);
 void screen_poll_pose(screen_t *screen, const hal_t *hal);
 void screen_poll_steps(screen_t *screen, const hal_t *hal);
+void screen_poll_fish(screen_t *screen, const hal_t *hal);
 /* Returns true when a tracking prompt or warning just took the screen. */
 bool screen_poll_track(screen_t *screen, const hal_t *hal);
 void screen_on_page(screen_t *screen, const hal_t *hal, const page_t *page);

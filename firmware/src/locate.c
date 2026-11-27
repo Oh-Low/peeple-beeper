@@ -56,14 +56,16 @@ static bool read_fix(const hal_t *hal, gps_fix_t *out) {
 }
 
 static void remember_fix(locate_radio_t *loc, const hal_t *hal, int32_t lat, int32_t lon) {
-  uint8_t hh = 0;
-  uint8_t mm = 0;
-  if (hal && hal->clock) hal->clock(hal->ctx, &hh, &mm);
+  wall_clock_t clk;
+  memset(&clk, 0, sizeof clk);
+  clk.hh = 255;
+  clk.mm = 255;
+  if (hal && hal->clock) hal->clock(hal->ctx, &clk);
   loc->saved_fix = true;
   loc->saved_lat = lat;
   loc->saved_lon = lon;
-  loc->saved_hh = hh;
-  loc->saved_mm = mm;
+  loc->saved_hh = clk.hh;
+  loc->saved_mm = clk.mm;
 }
 
 static void send_loc(locate_radio_t *loc, const hal_t *hal, identity_store_t *identity,

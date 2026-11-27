@@ -459,6 +459,271 @@ static void test_beeple_windows(void) {
   pass("beeple windows");
 }
 
+
+static char g_px[64];
+
+static bool left_row(const uint8_t *buf, int y, const char *row) {
+  for (int x = 0; x < 64; x++) {
+    if (pixel(buf, x, y) != (row[x] == '#')) {
+      snprintf(g_px, sizeof g_px, "scene pixel %d,%d", x, y);
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool left_rows(const uint8_t *buf, int y0, const char *const *rows, int n) {
+  for (int i = 0; i < n; i++) {
+    if (!left_row(buf, y0 + i, rows[i])) return false;
+  }
+  return true;
+}
+
+static void test_beeple_games(void) {
+  beeper_t b;
+  emu_hal_t ram;
+  hal_t hal;
+  uint8_t mascot[DISPLAY_BUF_LEN];
+  beeper_init(&b);
+  emu_hal_init(&ram, &hal);
+  ram.now_ms = 1000;
+
+  b.screen.mode = SCREEN_BEEPLE;
+  b.screen.beeple_page = 0;
+  b.screen.beeple_focus = 0;
+  b.screen.beeple_game = 0;
+  screen_set_beeple(&b.screen, 0);
+
+  emu_hal_push_encoder(&ram, ENC_CW);
+  screen_input(&b.screen, &hal);
+  ram.now_ms += SCREEN_SLIDE_MS;
+  emu_hal_push_encoder(&ram, ENC_CW);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.beeple_page == 2 && b.screen.beeple_focus == 0 && b.screen.beeple_game == 0,
+        "two turns from Select land on Games");
+
+  ram.now_ms += SCREEN_SLIDE_MS;
+  screen_render(&b.screen, &hal);
+  static const char *fishing[] = {
+      "..........................#.........#...........................",
+      ".....................####.......#...............................",
+      ".....................#....#..##.##..#.##...##...................",
+      ".....................###..#.##..#.#.#.#.#.#.#...................",
+      ".....................#....#...#.#.#.#.#.#.#.#...................",
+      ".....................#....#.##..#.#.#.#.#..##...................",
+      "..........................................##....................",
+      "................................................................",
+      "................................................................",
+      "................................................................",
+      "................................................................",
+      "................................................................",
+      "........................................#.......................",
+      "........................................#.......................",
+      "........................................#.......................",
+      "........................................#.......................",
+      "........................................#.......................",
+      "........................................#.......................",
+      "........................................#.......................",
+      "........................................#.......................",
+      ".......................................###......................",
+      "......................................#.#.#.....................",
+      ".......................................###......................",
+      "........................................#.......................",
+      "......................##########........#.......................",
+      ".............##.....######.....#........#.......................",
+      "............#..######..........###...#..#.......................",
+      "............#....##.....###....#.#....##........................",
+      "...........#..#.##.....#####..#..#..............................",
+      "..........#....##.....####..#....#..............................",
+      "..........#..#.#......####..#....#..............................",
+      "..........#...##......#######...##..............................",
+      "..........#..###.......#####....#...............................",
+      "..........#...#.........###.....#...............................",
+      ".........#..###.......#........##...............................",
+      ".........#...#........##......##................................",
+      ".........#..##..........#.....#.................................",
+      "..........#..#...........#...##.................................",
+      "..........#.##............####..................................",
+      "..........####....####......#...................................",
+      "...........###...#....#.....#...................................",
+      "............#...#.....#....#....................................",
+      "............#...#.....#....#....................................",
+  };
+  CHECK(left_rows(ram.display, 21, fishing, 43), g_px);
+
+  memcpy(mascot, ram.display, DISPLAY_BUF_LEN);
+  emu_hal_push_encoder(&ram, ENC_PRESS);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.beeple_focus == 1 && b.screen.beeple_game == 0, "a Games press highlights Fishing");
+
+  emu_hal_push_encoder(&ram, ENC_CW);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.beeple_game == 1 && b.screen.beeple_slide_from == 0 && b.screen.beeple_slide_dir == 1,
+        "a game turn slides from Fishing");
+  ram.now_ms += SCREEN_SLIDE_MS / 2;
+  screen_render(&b.screen, &hal);
+  bool mascot_ok = true;
+  for (int y = 0; y < DISPLAY_HEIGHT && mascot_ok; y++) {
+    for (int x = 64; x < DISPLAY_WIDTH; x++) {
+      if (pixel(ram.display, x, y) != pixel(mascot, x, y)) mascot_ok = false;
+    }
+  }
+  CHECK(mascot_ok, "the mascot stays while the game scene slides");
+
+  ram.now_ms += SCREEN_SLIDE_MS;
+  screen_render(&b.screen, &hal);
+  static const char *farming[] = {
+      ".....................................#..........................",
+      "...................####.........................................",
+      "...................#.....##.##.####..#.##...##..................",
+      "...................###..#.#.#..#.#.#.#.#.#.#.#..................",
+      "...................#....#.#.#..#.#.#.#.#.#.#.#..................",
+      "...................#.....##.#..#.#.#.#.#.#..##..................",
+      "...........................................##...................",
+      "................................................................",
+      "................................................................",
+      "................................................................",
+      "................................................................",
+      "................................................................",
+      "................................................................",
+      "................................................................",
+      "....###.........................................................",
+      "....#.##..........########......................................",
+      "....#..##.......##........#......#..............................",
+      "....#...##...#####.........#.....#..............................",
+      "....#....####....#.........####..#..............................",
+      "....#.............#.......#....#.#..............................",
+      "....##.............#######.....####.............................",
+      ".....####.........#.......#....#.#..............................",
+      "........#########..##...##..###..#..............................",
+      "................##############...#..............................",
+      ".................#........#......#..............................",
+      ".................#........#.....................................",
+      ".........######################.................................",
+      "........##.....................#................................",
+      "........####...................#................................",
+      "............######...........##.................................",
+      "..................###########...................................",
+      "................................................................",
+      "................................................................",
+      "..............................................#..####...........",
+      ".............................................#.#.#..#...........",
+      "..........................#.................#...##..#...........",
+      "..#.......#.......#......#.#...............#.....#..#...........",
+      "..##.....###.....##.....#...#.............#.......#.#...........",
+      "..#.#...#.#.#...#.#......#.#.............#.........##...........",
+      "..#..###..#..###..#.....#...#...........#...........#...........",
+      "..#.......#.......#....#.....#.........###############..........",
+      "..#.......#.......#.....#...#............#.........#............",
+      "..#.......#.......#....#.....#...........#.........#............",
+  };
+  CHECK(left_rows(ram.display, 33, farming + 12, 31), g_px);
+
+  emu_hal_push_back(&ram);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.beeple_focus == 0 && b.screen.beeple_slide_dir == 0 && b.screen.beeple_game == 1 &&
+            b.screen.beeple_page == 2,
+        "back returns to the Games title and keeps Farming");
+  screen_render(&b.screen, &hal);
+  CHECK(left_rows(ram.display, 21, farming, 43), g_px);
+
+  emu_hal_push_encoder(&ram, ENC_CW);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.beeple_page == 0 && b.screen.beeple_game == 1, "Games wraps to Select and keeps the scene");
+  pass("beeple games");
+}
+
+static void test_fishing(void) {
+  beeper_t b;
+  emu_hal_t ram;
+  hal_t hal;
+  uint8_t calm_buf[DISPLAY_BUF_LEN];
+  uint8_t bite_buf[DISPLAY_BUF_LEN];
+  uint32_t wait;
+  int bar, letters, y, x;
+  bool differ;
+  beeper_init(&b);
+  emu_hal_init(&ram, &hal);
+
+  b.screen.mode = SCREEN_BEEPLE;
+  b.screen.beeple_page = 2;
+  b.screen.beeple_focus = 1;
+  b.screen.beeple_game = 1;
+  ram.now_ms = 10000;
+  emu_hal_push_encoder(&ram, ENC_PRESS);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.fish.phase == 0, "farming does not start a game");
+
+  b.screen.beeple_game = 0;
+  emu_hal_push_encoder(&ram, ENC_PRESS);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.fish.phase == 1, "clicking Fishing starts the calm water");
+  wait = b.screen.fish.next - ram.now_ms;
+  CHECK(wait >= 3000 && wait <= 15000, "the bite waits between 3 and 15 seconds");
+
+  ram.now_ms = b.screen.fish.next - 1;
+  screen_poll_fish(&b.screen, &hal);
+  CHECK(b.screen.fish.phase == 1 && ram.vibe_ms == 0, "the bite has not started yet");
+
+  ram.now_ms = b.screen.fish.next;
+  screen_poll_fish(&b.screen, &hal);
+  CHECK(b.screen.fish.phase == 2 && ram.vibe_ms == 350, "the bite vibrates for 0.35 seconds");
+
+  screen_render(&b.screen, &hal);
+  memcpy(bite_buf, ram.display, DISPLAY_BUF_LEN);
+  b.screen.fish.phase = 1;
+  screen_render(&b.screen, &hal);
+  memcpy(calm_buf, ram.display, DISPLAY_BUF_LEN);
+  b.screen.fish.phase = 2;
+  differ = false;
+  for (y = 40; y < DISPLAY_HEIGHT && !differ; y++) {
+    for (x = 0; x < DISPLAY_WIDTH; x++) {
+      if (pixel(calm_buf, x, y) != pixel(bite_buf, x, y)) differ = true;
+    }
+  }
+  CHECK(differ, "the bite waves are noisier than the calm rings");
+
+  emu_hal_push_encoder(&ram, ENC_CW);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.fish.phase == 2 && b.screen.beeple_page == 2, "the wheel does nothing during a bite");
+
+  emu_hal_push_encoder(&ram, ENC_PRESS);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.fish.phase == 3 && ram.vibe_ms == 0, "a click during the bite catches");
+  screen_render(&b.screen, &hal);
+  bar = 0;
+  letters = 0;
+  for (x = 0; x < DISPLAY_WIDTH; x++) {
+    if (pixel(ram.display, x, 26)) bar++;
+    if (pixel(ram.display, x, 28)) letters++;
+  }
+  snprintf(g_px, sizeof g_px, "caught bar %d letters %d", bar, letters);
+  CHECK(bar > 96 && letters < bar, g_px);
+
+  emu_hal_push_encoder(&ram, ENC_PRESS);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.fish.phase == 1, "another click returns to calm");
+  emu_hal_push_encoder(&ram, ENC_PRESS);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.fish.phase == 1, "a click in calm water does not catch");
+  wait = b.screen.fish.next - ram.now_ms;
+  CHECK(wait >= 3000 && wait <= 15000, "the next bite waits between 3 and 15 seconds");
+
+  ram.now_ms = b.screen.fish.next;
+  screen_poll_fish(&b.screen, &hal);
+  CHECK(b.screen.fish.phase == 2, "the next bite starts");
+  ram.now_ms = b.screen.fish.since + 350;
+  screen_poll_fish(&b.screen, &hal);
+  CHECK(b.screen.fish.phase == 1, "a missed bite returns to calm");
+
+  emu_hal_push_back(&ram);
+  screen_input(&b.screen, &hal);
+  CHECK(b.screen.fish.phase == 0 && b.screen.mode == SCREEN_BEEPLE && b.screen.beeple_page == 2 &&
+            b.screen.beeple_focus == 1,
+        "back returns to the games menu");
+  pass("fishing");
+}
+
 int main(void) {
   test_backlight_timer();
   test_settings_release();
@@ -468,6 +733,8 @@ int main(void) {
   test_slide();
   test_stay_press();
   test_beeple_windows();
+  test_beeple_games();
+  test_fishing();
   printf("%d passed, %d failed\n", g_pass, g_fail);
   return g_fail ? 1 : 0;
 }

@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-bool nmea_push_byte(nmea_line_t *line, uint8_t byte, gps_fix_t *out, uint8_t *hh, uint8_t *mm) {
+bool nmea_push_byte(nmea_line_t *line, uint8_t byte, gps_fix_t *out, wall_clock_t *clock) {
   if (!line) return false;
   if (byte == '\r') return false;
   if (byte == '\n') {
@@ -11,7 +11,7 @@ bool nmea_push_byte(nmea_line_t *line, uint8_t byte, gps_fix_t *out, uint8_t *hh
     line->len = 0;
     line->skip = false;
     if (skip) return false;
-    return nmea_parse_rmc(line->bytes, out, hh, mm);
+    return nmea_parse_rmc(line->bytes, out, clock);
   }
   if (line->skip || line->len >= NMEA_LINE_MAX - 1) {
     line->skip = true;
@@ -105,17 +105,47 @@ static const char *field_at(const char *line, int index, char *buf, size_t cap) 
   return NULL;
 }
 
-static void note_clock(const char *time, uint8_t *hh, uint8_t *mm) {
-  if (!hh || !mm) return;
-  if (!time || time[0] < '0' || time[1] < '0' || time[2] < '0' || time[3] < '0') return;
+static bool digits(const char *s, int n) {
+  if (!s) return false;
+  for (int i = 0; i < n; i++) {
+    if (s[i] < '0' || s[i] > '9') return false;
+  }
+  return true;
+}
+
+static bool leap(int year) {
+  return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+static int month_len(int year, int month) {
+  static const uint8_t len[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  if (month == 2 && leap(year)) return 29;
+  return len[month - 1];
+}
+
+static void note_clock(const char *time, wall_clock_t *clock) {
+  if (!clock || !digits(time, 4)) return;
   int hour = (time[0] - '0') * 10 + (time[1] - '0');
   int minute = (time[2] - '0') * 10 + (time[3] - '0');
   if (hour > 23 || minute > 59) return;
-  *hh = (uint8_t)hour;
-  *mm = (uint8_t)minute;
+  clock->hh = (uint8_t)hour;
+  clock->mm = (uint8_t)minute;
 }
 
-bool nmea_parse_rmc(const char *line, gps_fix_t *out, uint8_t *hh, uint8_t *mm) {
+static void note_date(const char *date, wall_clock_t *clock) {
+  int day, month, yy, year;
+  if (!clock || !digits(date, 6)) return;
+  day = (date[0] - '0') * 10 + (date[1] - '0');
+  month = (date[2] - '0') * 10 + (date[3] - '0');
+  yy = (date[4] - '0') * 10 + (date[5] - '0');
+  year = 2000 + yy;
+  if (month < 1 || month > 12 || day < 1 || day > month_len(year, month)) return;
+  clock->year = (uint16_t)year;
+  clock->month = (uint8_t)month;
+  clock->day = (uint8_t)day;
+}
+
+bool nmea_parse_rmc(const char *line, gps_fix_t *out, wall_clock_t *clock) {
   if (!line || !out) return false;
   if (!is_rmc(line) || !checksum_ok(line)) return false;
   char status[8];
@@ -124,9 +154,13 @@ bool nmea_parse_rmc(const char *line, gps_fix_t *out, uint8_t *hh, uint8_t *mm) 
   char ns[4];
   char lon[24];
   char ew[4];
+  char date[16];
   if (!field_at(line, 2, status, sizeof status)) return false;
   memset(out, 0, sizeof *out);
-  if (status[0] == 'A' && field_at(line, 1, tim, sizeof tim)) note_clock(tim, hh, mm);
+  if (status[0] == 'A') {
+    if (field_at(line, 1, tim, sizeof tim)) note_clock(tim, clock);
+    if (field_at(line, 9, date, sizeof date)) note_date(date, clock);
+  }
   if (status[0] != 'A') return true;
   if (!field_at(line, 3, lat, sizeof lat) || !field_at(line, 4, ns, sizeof ns) ||
       !field_at(line, 5, lon, sizeof lon) || !field_at(line, 6, ew, sizeof ew)) {

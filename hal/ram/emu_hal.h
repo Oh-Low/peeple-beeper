@@ -16,6 +16,8 @@ typedef struct {
   size_t nvm_len;
   uint32_t now_ms;
   uint8_t hh, mm;
+  uint16_t year;
+  uint8_t month, day;
   uint8_t battery;
   bool whisper;
   uint16_t vibe_ms;

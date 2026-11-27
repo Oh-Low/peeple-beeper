@@ -64,6 +64,16 @@ typedef struct {
   bool motor;
 } accel_sample_t;
 
+/* UTC from the latest status-A RMC with a legal time. year is 0 until that
+   sentence also carries a legal ddmmyy. The two digits are a year in 2000–2099. */
+typedef struct {
+  uint8_t hh;
+  uint8_t mm;
+  uint16_t year;
+  uint8_t month;
+  uint8_t day;
+} wall_clock_t;
+
 /* pct is 0–100. charging is USB power with the cell still below full.
    minutes is the estimate until full, and 0 when charging is false. */
 typedef struct {
@@ -89,7 +99,7 @@ typedef struct hal {
   size_t (*nvm_load)(void *ctx, uint8_t *out, size_t max);
   bool (*nvm_save)(void *ctx, const uint8_t *bytes, size_t len);
   uint32_t (*now_ms)(void *ctx);
-  void (*clock)(void *ctx, uint8_t *hh, uint8_t *mm);
+  void (*clock)(void *ctx, wall_clock_t *out);
   bool (*battery)(void *ctx, battery_t *out);
   void (*vibe)(void *ctx, uint16_t ms);
   void (*beep)(void *ctx, uint16_t ms);

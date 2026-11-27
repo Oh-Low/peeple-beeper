@@ -70,6 +70,7 @@ void beeper_tick(beeper_t *b, const hal_t *hal) {
   screen_poll_locate(&b->screen);
   screen_poll_pose(&b->screen, hal);
   screen_poll_steps(&b->screen, hal);
+  screen_poll_fish(&b->screen, hal);
 
   screen_poll_send(&b->screen, hal);
   bool track_grab = screen_poll_track(&b->screen, hal);

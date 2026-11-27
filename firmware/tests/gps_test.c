@@ -60,23 +60,39 @@ static void test_grid_quantization(void) {
 static void test_nmea(void) {
   char line[128];
   gps_fix_t fix;
+  wall_clock_t clk;
+  memset(&clk, 0, sizeof clk);
   snprintf(line, sizeof line, "$GPRMC,120000.000,A,0000.0248,N,00000.0246,W,0.00,0.00,091026,,,A");
   finish_nmea(line, sizeof line);
-  CHECK(nmea_parse_rmc(line, &fix, NULL, NULL), "parse corner RMC");
+  CHECK(nmea_parse_rmc(line, &fix, &clk), "parse corner RMC");
   CHECK(fix.valid, "corner fix valid");
   CHECK_EQ(fix.lat_min_e4, 248, "RMC lat");
   CHECK_EQ(fix.lon_min_e4, -246, "RMC lon");
+  CHECK_EQ(clk.year, 2026, "9 Oct 2026");
+  CHECK_EQ(clk.month, 10, "October");
+  CHECK_EQ(clk.day, 9, "the 9th");
 
   snprintf(line, sizeof line, "$GPRMC,123519.000,A,4807.0380,N,01131.0000,E,022.4,084.4,230394,,,A");
   finish_nmea(line, sizeof line);
-  CHECK(nmea_parse_rmc(line, &fix, NULL, NULL), "parse classic RMC");
+  CHECK(nmea_parse_rmc(line, &fix, &clk), "parse classic RMC");
   CHECK_EQ(fix.lat_min_e4, 28870380, "4807.0380 N");
   CHECK_EQ(fix.lon_min_e4, 6910000, "01131.0000 E");
+  CHECK_EQ(clk.year, 2094, "23 Mar 2094");
+  CHECK_EQ(clk.month, 3, "March");
+  CHECK_EQ(clk.day, 23, "the 23rd");
+
+  snprintf(line, sizeof line, "$GPRMC,120000.000,A,0000.0248,N,00000.0246,W,0.00,0.00,321399,,,A");
+  finish_nmea(line, sizeof line);
+  CHECK(nmea_parse_rmc(line, &fix, &clk), "parse an impossible day");
+  CHECK_EQ(clk.year, 2094, "an impossible day leaves the date");
+  CHECK_EQ(clk.hh, 12, "the time still updates");
+  CHECK_EQ(clk.mm, 0, "the minute still updates");
 
   snprintf(line, sizeof line, "$GNRMC,120000.000,V,,,,,,,091026,,,N");
   finish_nmea(line, sizeof line);
-  CHECK(nmea_parse_rmc(line, &fix, NULL, NULL), "parse void RMC");
+  CHECK(nmea_parse_rmc(line, &fix, &clk), "parse void RMC");
   CHECK(!fix.valid, "void fix");
+  CHECK_EQ(clk.year, 2094, "a void fix leaves the date");
 
   hal_t hal;
   feather_hal_init(&hal);
@@ -102,17 +118,19 @@ static void test_nmea(void) {
   feather_gps_push_byte('\n');
   CHECK(hal.gps_fix(hal.ctx, &fix), "the next line parses");
   CHECK_EQ(fix.lat_min_e4, 28870380, "next line lat");
-  uint8_t hh = 0;
-  uint8_t mm = 0;
-  hal.clock(hal.ctx, &hh, &mm);
-  CHECK_EQ(hh, 12, "clock hour");
-  CHECK_EQ(mm, 35, "clock minute");
+  hal.clock(hal.ctx, &clk);
+  CHECK_EQ(clk.hh, 12, "clock hour");
+  CHECK_EQ(clk.mm, 35, "clock minute");
+  CHECK_EQ(clk.year, 2094, "clock year");
+  CHECK_EQ(clk.month, 3, "clock month");
+  CHECK_EQ(clk.day, 23, "clock day");
   hal.gps_power(hal.ctx, false);
   hal.gps_power(hal.ctx, true);
   CHECK(!hal.gps_fix(hal.ctx, &fix), "a new listen waits for a new sentence");
-  hal.clock(hal.ctx, &hh, &mm);
-  CHECK_EQ(hh, 12, "power cycle keeps the clock");
-  CHECK_EQ(mm, 35, "power cycle keeps the minute");
+  hal.clock(hal.ctx, &clk);
+  CHECK_EQ(clk.hh, 12, "power cycle keeps the clock");
+  CHECK_EQ(clk.mm, 35, "power cycle keeps the minute");
+  CHECK_EQ(clk.year, 2094, "power cycle keeps the date");
   pass("RMC sentences match the posted arcminutes");
 }
 

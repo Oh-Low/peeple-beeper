@@ -11,7 +11,7 @@
 #define MAGIC1 0x42
 #define MAGIC2 0x30
 #define MAGIC3 0x31
-#define STORE_VERSION 12
+#define STORE_VERSION 14
 #define STATUS_SENDING 0
 #define STATUS_SENT 1
 #define STATUS_FAILED 2
@@ -206,6 +206,15 @@ static size_t encode_slice(beeper_t *b, const inbox_row_t *inbox, int inbox_n,
   for (int i = 0; i < BEEPLE_N; i++) {
     if (!w_u32(&w, b->screen.steps_saved[i])) return (size_t)-1;
   }
+  for (int i = 0; i < BEEPLE_N; i++) {
+    if (!w_u32(&w, b->screen.steps_today_saved[i])) return (size_t)-1;
+  }
+  if (!w_u8(&w, b->screen.steps_day_known_saved ? 1 : 0)) return (size_t)-1;
+  if (!w_u16(&w, b->screen.steps_day_min_saved)) return (size_t)-1;
+  if (!w_u8(&w, (uint8_t)b->screen.steps_day_tz_saved)) return (size_t)-1;
+  if (!w_u16(&w, b->screen.steps_day_year_saved)) return (size_t)-1;
+  if (!w_u8(&w, b->screen.steps_day_month_saved)) return (size_t)-1;
+  if (!w_u8(&w, b->screen.steps_day_mday_saved)) return (size_t)-1;
   return w.o;
 }
 
@@ -345,6 +354,25 @@ bool store_apply(beeper_t *b, const uint8_t *bytes, size_t len) {
   if (ver >= 12) {
     for (int i = 0; i < BEEPLE_N; i++) steps_saved[i] = r_u32(&r);
   }
+  uint32_t steps_today[BEEPLE_N];
+  memset(steps_today, 0, sizeof steps_today);
+  uint8_t steps_day_known = 0;
+  uint16_t steps_day_min = 0;
+  int8_t steps_day_tz = 0;
+  uint16_t steps_day_year = 0;
+  uint8_t steps_day_month = 0;
+  uint8_t steps_day_mday = 0;
+  if (ver >= 13) {
+    for (int i = 0; i < BEEPLE_N; i++) steps_today[i] = r_u32(&r);
+    steps_day_known = r_u8(&r);
+    steps_day_min = r_u16(&r);
+    steps_day_tz = (int8_t)r_u8(&r);
+  }
+  if (ver >= 14) {
+    steps_day_year = (uint16_t)r_u16(&r);
+    steps_day_month = r_u8(&r);
+    steps_day_mday = r_u8(&r);
+  }
 
   if (!r.ok || r.o != r.len) return false;
 
@@ -378,6 +406,20 @@ bool store_apply(beeper_t *b, const uint8_t *bytes, size_t len) {
   b->screen.tz_hours = tz_hours;
   memcpy(b->screen.steps, steps_saved, sizeof steps_saved);
   memcpy(b->screen.steps_saved, steps_saved, sizeof steps_saved);
+  memcpy(b->screen.steps_today, steps_today, sizeof steps_today);
+  memcpy(b->screen.steps_today_saved, steps_today, sizeof steps_today);
+  b->screen.steps_day_known = steps_day_known != 0;
+  b->screen.steps_day_min = steps_day_min;
+  b->screen.steps_day_tz = steps_day_tz;
+  b->screen.steps_day_known_saved = b->screen.steps_day_known;
+  b->screen.steps_day_min_saved = steps_day_min;
+  b->screen.steps_day_tz_saved = steps_day_tz;
+  b->screen.steps_day_year = steps_day_year;
+  b->screen.steps_day_month = steps_day_month;
+  b->screen.steps_day_mday = steps_day_mday;
+  b->screen.steps_day_year_saved = steps_day_year;
+  b->screen.steps_day_month_saved = steps_day_month;
+  b->screen.steps_day_mday_saved = steps_day_mday;
   b->screen.steps_holding = false;
   screen_set_beeple(&b->screen, beeple);
   return true;

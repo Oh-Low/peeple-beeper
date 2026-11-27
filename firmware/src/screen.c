@@ -152,16 +152,23 @@ static int wrap_hour(int hour) {
   return hour;
 }
 
+static void read_clock(const hal_t *hal, wall_clock_t *clk) {
+  memset(clk, 0, sizeof *clk);
+  clk->hh = CLOCK_NONE;
+  clk->mm = CLOCK_NONE;
+  if (hal->clock) hal->clock(hal->ctx, clk);
+}
+
 static void local_hm(const screen_t *screen, const hal_t *hal, uint8_t *hh, uint8_t *mm) {
-  uint8_t h = 0, m = 0;
-  hal->clock(hal->ctx, &h, &m);
-  if (h > 23 || m > 59) {
+  wall_clock_t clk;
+  read_clock(hal, &clk);
+  if (clk.hh > 23 || clk.mm > 59) {
     *hh = CLOCK_NONE;
     *mm = CLOCK_NONE;
     return;
   }
-  *hh = (uint8_t)wrap_hour((int)h + (int)screen->tz_hours);
-  *mm = m;
+  *hh = (uint8_t)wrap_hour((int)clk.hh + (int)screen->tz_hours);
+  *mm = clk.mm;
 }
 
 static void stamp_clock(const screen_t *screen, const hal_t *hal, uint8_t *hh, uint8_t *mm) {
@@ -361,9 +368,17 @@ static void dismiss_sent(screen_t *screen, const hal_t *hal) {
   screen->sel = 0;
 }
 
-#define BEEPLE_PAGE_N 2
+#define BEEPLE_PAGE_N 3
+#define BEEPLE_PAGE_SELECT 0
+#define BEEPLE_PAGE_STATS 1
+#define BEEPLE_PAGE_GAMES 2
+#define BEEPLE_SPAN_N 2
+#define BEEPLE_GAME_N 2
 #define BEEPLE_BODY_Y 22
+#define BEEPLE_GAME_Y 21
+#define BEEPLE_GAME_ART_Y 33
 #define BEEPLE_FLAVOR_Y 32
+#define BEEPLE_STATS_Y 29
 
 static bool beeple_sliding(const screen_t *screen, const hal_t *hal) {
   if (screen->beeple_slide_dir == 0) return false;
@@ -371,6 +386,7 @@ static bool beeple_sliding(const screen_t *screen, const hal_t *hal) {
 }
 
 static void beeple_turn(screen_t *screen, const hal_t *hal, int dir) {
+  if (fishing_playing(&screen->fish)) return;
   if (beeple_sliding(screen, hal)) return;
   if (screen->beeple_focus == 0) {
     int page = screen->beeple_page + (dir > 0 ? 1 : -1);
@@ -380,6 +396,28 @@ static void beeple_turn(screen_t *screen, const hal_t *hal, int dir) {
     screen->beeple_slide_dir = dir > 0 ? 1 : -1;
     screen->beeple_slide_start = hal->now_ms(hal->ctx);
     screen->beeple_page = (int8_t)page;
+    return;
+  }
+  if (screen->beeple_page == BEEPLE_PAGE_STATS) {
+    int from = screen->beeple_span;
+    int span = from + (dir > 0 ? 1 : -1);
+    if (span < 0) span = BEEPLE_SPAN_N - 1;
+    if (span >= BEEPLE_SPAN_N) span = 0;
+    screen->beeple_slide_from = (int8_t)from;
+    screen->beeple_slide_dir = dir > 0 ? 1 : -1;
+    screen->beeple_slide_start = hal->now_ms(hal->ctx);
+    screen->beeple_span = (int8_t)span;
+    return;
+  }
+  if (screen->beeple_page == BEEPLE_PAGE_GAMES) {
+    int from = screen->beeple_game;
+    int game = from + (dir > 0 ? 1 : -1);
+    if (game < 0) game = BEEPLE_GAME_N - 1;
+    if (game >= BEEPLE_GAME_N) game = 0;
+    screen->beeple_slide_from = (int8_t)from;
+    screen->beeple_slide_dir = dir > 0 ? 1 : -1;
+    screen->beeple_slide_start = hal->now_ms(hal->ctx);
+    screen->beeple_game = (int8_t)game;
     return;
   }
   int from = screen->beeple;
@@ -492,6 +530,10 @@ static void on_back(screen_t *screen, const hal_t *hal) {
     return;
   }
   if (screen->mode == SCREEN_BEEPLE) {
+    if (fishing_playing(&screen->fish)) {
+      fishing_stop(&screen->fish, hal);
+      return;
+    }
     if (screen->beeple_focus) {
       screen->beeple_focus = 0;
       screen->beeple_slide_dir = 0;
@@ -641,8 +683,15 @@ static int on_press(screen_t *screen, const hal_t *hal) {
     return screen->mode == SCREEN_MENU ? NAV_STAY : NAV_PUSH;
   }
   if (screen->mode == SCREEN_BEEPLE) {
-    if (!beeple_sliding(screen, hal) && screen->beeple_focus == 0 && screen->beeple_page == 0) {
+    if (fishing_playing(&screen->fish)) {
+      fishing_press(&screen->fish, hal);
+      return NAV_STAY;
+    }
+    if (!beeple_sliding(screen, hal) && screen->beeple_focus == 0) {
       screen->beeple_focus = 1;
+    } else if (!beeple_sliding(screen, hal) && screen->beeple_focus == 1 &&
+               screen->beeple_page == BEEPLE_PAGE_GAMES && screen->beeple_game == 0) {
+      fishing_start(&screen->fish, hal);
     }
     return NAV_STAY;
   }
@@ -1059,13 +1108,23 @@ static void format_steps(char *out, size_t cap, uint32_t n) {
   snprintf(out, cap, "%u.%ub", n / 1000000000u, (n % 1000000000u) / 100000000u);
 }
 
-static void draw_beeple_stats(uint8_t *buf, const screen_t *screen) {
+static const char *beeple_span_label(int span) { return span ? "All time" : "Today"; }
+
+static void draw_beeple_span(uint8_t *buf, int span, bool marked) {
+  draw_marked(buf, BEEPLE_BODY_Y, beeple_span_label(span), marked);
+}
+
+static void draw_beeple_stat_nums(uint8_t *buf, const screen_t *screen, int span) {
   static const char *battery[] = {"###", "###", "###", "######", "#.....#", "#######"};
   static const char *spark[] = {"#....#", "....###", "#..#.#.#", "..###.###", "#..#.#.#", "....###", "#....#"};
   static const char *heart[] = {".##...##", "#..#.#..#", "#...#...#", ".#.....#", "..#...#", "...#.#", "....#"};
-  static const char *bar[] = {
+  static const char *bar_all[] = {
       "#################", "#######.........#", "#######.........#", "#######.........#",
       "#######.........#", "#######.........#", "#################",
+  };
+  static const char *bar_today[] = {
+      "#################", "#...............#", "#...............#", "#...............#",
+      "#...............#", "#...............#", "#################",
   };
   static const char *bolt[] = {"#", "....###", "#..#.#.#", "..#..##.#", "#.#..#..#", "..#.....#", "#..#...#", "....###", "#"};
   static const char *mail[] = {"#########", "##.....##", "#.#...#.#", "#..###..#", "#.......#", "#.......#", "#########"};
@@ -1073,29 +1132,123 @@ static void draw_beeple_stats(uint8_t *buf, const screen_t *screen) {
   static const char *clock[] = {".....###", ".##.#...#", "#..#....#", "#..#.....#", ".#....#..#", "..####.##"};
   int step_id = screen->beeple;
   char steps[16];
+  bool today = span == 0;
   if (step_id < 0 || step_id >= BEEPLE_N) step_id = 0;
-  format_steps(steps, sizeof steps, screen->steps[step_id]);
-  draw_beeple_name(buf, screen, false);
+  format_steps(steps, sizeof steps, today ? screen->steps_today[step_id] : screen->steps[step_id]);
   draw_icon(buf, 3, 30, battery, 6);
   display_draw_text_small(buf, 14, 29, steps);
   draw_icon(buf, 34, 29, spark, 7);
-  display_draw_text_small(buf, 46, 29, "87");
+  display_draw_text_small(buf, 46, 29, today ? "0" : "87");
   draw_icon(buf, 2, 38, heart, 7);
-  draw_icon(buf, 14, 38, bar, 7);
+  draw_icon(buf, 14, 38, today ? bar_today : bar_all, 7);
   draw_icon(buf, 34, 37, bolt, 9);
-  display_draw_text_small(buf, 46, 38, "45 s");
+  display_draw_text_small(buf, 46, 38, today ? "0 s" : "45 s");
   draw_icon(buf, 2, 47, mail, 7);
-  display_draw_text_small(buf, 14, 47, "781");
+  display_draw_text_small(buf, 14, 47, today ? "0" : "781");
   draw_icon(buf, 34, 47, figure, 7);
-  display_draw_text_small(buf, 46, 48, "14 kg");
+  display_draw_text_small(buf, 46, 48, today ? "0 kg" : "14 kg");
   draw_icon(buf, 2, 56, clock, 6);
-  display_draw_text_small(buf, 14, 56, "42 hr");
+  display_draw_text_small(buf, 14, 56, today ? "0 hr" : "42 hr");
   for (int y = 29; y <= 61; y += 2) display_set_pixel(buf, 34, y, true);
 }
 
+static void draw_beeple_stats(uint8_t *buf, const screen_t *screen) {
+  draw_beeple_span(buf, screen->beeple_span, screen->beeple_focus != 0);
+  draw_beeple_stat_nums(buf, screen, screen->beeple_span);
+}
+
+static void draw_beeple_game_art(uint8_t *buf, int game) {
+  static const char *fishing[] = {
+      "...............................#..",
+      "...............................#..",
+      "...............................#..",
+      "...............................#..",
+      "...............................#..",
+      "...............................#..",
+      "...............................#..",
+      "...............................#..",
+      "..............................###.",
+      ".............................#.#.#",
+      "..............................###.",
+      "...............................#..",
+      ".............##########........#..",
+      "....##.....######.....#........#..",
+      "...#..######..........###...#..#..",
+      "...#....##.....###....#.#....##...",
+      "..#..#.##.....#####..#..#.........",
+      ".#....##.....####..#....#.........",
+      ".#..#.#......####..#....#.........",
+      ".#...##......#######...##.........",
+      ".#..###.......#####....#..........",
+      ".#...#.........###.....#..........",
+      "#..###.......#........##..........",
+      "#...#........##......##...........",
+      "#..##..........#.....#............",
+      ".#..#...........#...##............",
+      ".#.##............####.............",
+      ".####....####......#..............",
+      "..###...#....#.....#..............",
+      "...#...#.....#....#...............",
+      "...#...#.....#....#...............",
+  };
+  static const char *farming[] = {
+      "..###...............................................",
+      "..#.##..........########............................",
+      "..#..##.......##........#......#....................",
+      "..#...##...#####.........#.....#....................",
+      "..#....####....#.........####..#....................",
+      "..#.............#.......#....#.#....................",
+      "..##.............#######.....####...................",
+      "...####.........#.......#....#.#....................",
+      "......#########..##...##..###..#....................",
+      "..............##############...#....................",
+      "...............#........#......#....................",
+      "...............#........#...........................",
+      ".......######################.......................",
+      "......##.....................#......................",
+      "......####...................#......................",
+      "..........######...........##.......................",
+      "................###########.........................",
+      "",
+      "",
+      "............................................#..####.",
+      "...........................................#.#.#..#.",
+      "........................#.................#...##..#.",
+      "#.......#.......#......#.#...............#.....#..#.",
+      "##.....###.....##.....#...#.............#.......#.#.",
+      "#.#...#.#.#...#.#......#.#.............#.........##.",
+      "#..###..#..###..#.....#...#...........#...........#.",
+      "#.......#.......#....#.....#.........###############",
+      "#.......#.......#.....#...#............#.........#..",
+      "#.......#.......#....#.....#...........#.........#..",
+  };
+  if (game == 0) draw_icon(buf, 9, 33, fishing, 31);
+  else draw_icon(buf, 2, 35, farming, 29);
+}
+
+static void draw_beeple_game_label(uint8_t *buf, int game, bool marked) {
+  static const char *labels[BEEPLE_GAME_N] = {"Fishing", "Farming"};
+  static const int xs[BEEPLE_GAME_N] = {21, 19};
+  if (game < 0 || game >= BEEPLE_GAME_N) game = 0;
+  display_draw_text_small(buf, xs[game], BEEPLE_GAME_Y, labels[game]);
+  if (!marked) return;
+  int w = display_text_width_small(labels[game]);
+  display_invert_rect(buf, xs[game], BEEPLE_GAME_Y, w, FONT_SMALL_H);
+  draw_chevron(buf, xs[game] - 5, BEEPLE_GAME_Y + 1, -1);
+  draw_chevron(buf, xs[game] + w + 2, BEEPLE_GAME_Y + 1, 1);
+}
+
+static void draw_beeple_games(uint8_t *buf, const screen_t *screen) {
+  int game = screen->beeple_game;
+  if (game < 0 || game >= BEEPLE_GAME_N) game = 0;
+  draw_beeple_game_label(buf, game, screen->beeple_focus != 0);
+  draw_beeple_game_art(buf, game);
+}
+
 static void draw_beeple_body(uint8_t *buf, const screen_t *screen, int page) {
-  if (page == 0) draw_beeple_select(buf, screen);
-  else draw_beeple_stats(buf, screen);
+  if (page == BEEPLE_PAGE_SELECT) draw_beeple_select(buf, screen);
+  else if (page == BEEPLE_PAGE_STATS) draw_beeple_stats(buf, screen);
+  else draw_beeple_games(buf, screen);
 }
 
 static void copy_col(uint8_t *dst, const uint8_t *src, int dx, int sx, int y0, int y1) {
@@ -1137,7 +1290,7 @@ static bool beeple_slide_shift(const screen_t *screen, const hal_t *hal, int *sh
 }
 
 static void draw_beeple_column(screen_t *screen, uint8_t *buf, bool sliding, int shift) {
-  static const char *tabs[BEEPLE_PAGE_N] = {"Select", "Stats"};
+  static const char *tabs[BEEPLE_PAGE_N] = {"Select", "Stats", "Games"};
   int page = screen->beeple_page;
   draw_marked(buf, 13, tabs[page], screen->beeple_focus == 0);
   if (!sliding) {
@@ -1145,6 +1298,30 @@ static void draw_beeple_column(screen_t *screen, uint8_t *buf, bool sliding, int
     return;
   }
   uint8_t tmp[DISPLAY_BUF_LEN];
+  if (screen->beeple_focus && screen->beeple_page == BEEPLE_PAGE_STATS) {
+    draw_beeple_span(buf, screen->beeple_span, true);
+    display_clear(tmp);
+    draw_beeple_stat_nums(tmp, screen, screen->beeple_slide_from);
+    paint_slide(buf, tmp, 0, BEEPLE_STATS_Y, MENU_HALF, DISPLAY_HEIGHT - BEEPLE_STATS_Y, shift,
+                screen->beeple_slide_dir, false);
+    display_clear(tmp);
+    draw_beeple_stat_nums(tmp, screen, screen->beeple_span);
+    paint_slide(buf, tmp, 0, BEEPLE_STATS_Y, MENU_HALF, DISPLAY_HEIGHT - BEEPLE_STATS_Y, shift,
+                screen->beeple_slide_dir, true);
+    return;
+  }
+  if (screen->beeple_focus && screen->beeple_page == BEEPLE_PAGE_GAMES) {
+    draw_beeple_game_label(buf, screen->beeple_game, true);
+    display_clear(tmp);
+    draw_beeple_game_art(tmp, screen->beeple_slide_from);
+    paint_slide(buf, tmp, 0, BEEPLE_GAME_ART_Y, MENU_HALF, DISPLAY_HEIGHT - BEEPLE_GAME_ART_Y, shift,
+                screen->beeple_slide_dir, false);
+    display_clear(tmp);
+    draw_beeple_game_art(tmp, screen->beeple_game);
+    paint_slide(buf, tmp, 0, BEEPLE_GAME_ART_Y, MENU_HALF, DISPLAY_HEIGHT - BEEPLE_GAME_ART_Y, shift,
+                screen->beeple_slide_dir, true);
+    return;
+  }
   if (screen->beeple_focus) {
     draw_beeple_name(buf, screen, true);
     display_clear(tmp);
@@ -1160,11 +1337,11 @@ static void draw_beeple_column(screen_t *screen, uint8_t *buf, bool sliding, int
   int from = screen->beeple_slide_from;
   display_clear(tmp);
   draw_beeple_body(tmp, screen, from);
-  paint_slide(buf, tmp, 0, BEEPLE_BODY_Y, MENU_HALF, DISPLAY_HEIGHT - BEEPLE_BODY_Y, shift,
+  paint_slide(buf, tmp, 0, BEEPLE_GAME_Y, MENU_HALF, DISPLAY_HEIGHT - BEEPLE_GAME_Y, shift,
               screen->beeple_slide_dir, false);
   display_clear(tmp);
   draw_beeple_body(tmp, screen, page);
-  paint_slide(buf, tmp, 0, BEEPLE_BODY_Y, MENU_HALF, DISPLAY_HEIGHT - BEEPLE_BODY_Y, shift,
+  paint_slide(buf, tmp, 0, BEEPLE_GAME_Y, MENU_HALF, DISPLAY_HEIGHT - BEEPLE_GAME_Y, shift,
               screen->beeple_slide_dir, true);
 }
 
@@ -1172,7 +1349,7 @@ static void draw_beeple(screen_t *screen, const hal_t *hal, uint8_t *buf) {
   int shift = 0;
   bool sliding = beeple_slide_shift(screen, hal, &shift);
   if (!sliding) screen->beeple_slide_dir = 0;
-  if (sliding && screen->beeple_focus) {
+  if (sliding && screen->beeple_focus && screen->beeple_page == 0) {
     uint8_t tmp[DISPLAY_BUF_LEN];
     display_clear(tmp);
     draw_art_id(tmp, screen->beeple_slide_from);
@@ -1878,7 +2055,10 @@ void screen_render(screen_t *screen, const hal_t *hal) {
   }
   else if (screen->mode == SCREEN_PAIR) draw_pair(screen, hal, buf);
   else if (screen->mode == SCREEN_SETTINGS) draw_settings(screen, hal, buf);
-  else if (screen->mode == SCREEN_BEEPLE) draw_beeple(screen, hal, buf);
+  else if (screen->mode == SCREEN_BEEPLE) {
+    if (fishing_playing(&screen->fish)) fishing_draw(&screen->fish, hal, buf);
+    else draw_beeple(screen, hal, buf);
+  }
   else if (screen->mode == SCREEN_TRACKASK) draw_track_ask(screen, hal, buf);
   else if (screen->mode == SCREEN_TRACKED) draw_tracked(screen, hal, buf);
   else if (screen->mode == SCREEN_NAMEEDIT || screen->mode == SCREEN_BODYEDIT) {
@@ -1930,7 +2110,8 @@ static void steps_commit(screen_t *screen, uint32_t now) {
   bool held;
   bool cooled;
   if (!screen->steps_holding) return;
-  if (memcmp(screen->steps, screen->steps_saved, sizeof screen->steps) == 0) {
+  if (memcmp(screen->steps, screen->steps_saved, sizeof screen->steps) == 0 &&
+      memcmp(screen->steps_today, screen->steps_today_saved, sizeof screen->steps_today) == 0) {
     screen->steps_holding = false;
     return;
   }
@@ -1939,8 +2120,129 @@ static void steps_commit(screen_t *screen, uint32_t now) {
   cooled = !screen->steps_saved_ms || elapsed_u32(now, screen->steps_saved_ms) >= STEP_NVM_MS;
   if (!cooled || (!quiet && !held)) return;
   memcpy(screen->steps_saved, screen->steps, sizeof screen->steps);
+  memcpy(screen->steps_today_saved, screen->steps_today, sizeof screen->steps_today);
+  screen->steps_day_known_saved = screen->steps_day_known;
+  screen->steps_day_min_saved = screen->steps_day_min;
+  screen->steps_day_tz_saved = screen->steps_day_tz;
+  screen->steps_day_year_saved = screen->steps_day_year;
+  screen->steps_day_month_saved = screen->steps_day_month;
+  screen->steps_day_mday_saved = screen->steps_day_mday;
   screen->steps_saved_ms = now ? now : 1;
   screen->steps_holding = false;
+}
+
+static void steps_publish_day(screen_t *screen) {
+  screen->steps_day_known_saved = screen->steps_day_known;
+  screen->steps_day_min_saved = screen->steps_day_min;
+  screen->steps_day_tz_saved = screen->steps_day_tz;
+  screen->steps_day_year_saved = screen->steps_day_year;
+  screen->steps_day_month_saved = screen->steps_day_month;
+  screen->steps_day_mday_saved = screen->steps_day_mday;
+}
+
+static void steps_clear_today(screen_t *screen) {
+  memset(screen->steps_today, 0, sizeof screen->steps_today);
+  memset(screen->steps_today_saved, 0, sizeof screen->steps_today_saved);
+  steps_publish_day(screen);
+}
+
+static bool leap_year(int year) {
+  return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+static int month_len(int year, int month) {
+  static const uint8_t len[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  if (month == 2 && leap_year(year)) return 29;
+  return len[month - 1];
+}
+
+static void shift_date(int *year, int *month, int *day, int dir) {
+  if (dir > 0) {
+    if (*day >= month_len(*year, *month)) {
+      *day = 1;
+      if (*month == 12) {
+        *month = 1;
+        *year += 1;
+      } else {
+        *month += 1;
+      }
+    } else {
+      *day += 1;
+    }
+  } else if (dir < 0) {
+    if (*day <= 1) {
+      if (*month == 1) {
+        *month = 12;
+        *year -= 1;
+      } else {
+        *month -= 1;
+      }
+      *day = month_len(*year, *month);
+    } else {
+      *day -= 1;
+    }
+  }
+}
+
+static void steps_roll_day(screen_t *screen, const hal_t *hal) {
+  wall_clock_t clk;
+  int hour;
+  int shift;
+  int year, month, day;
+  int min;
+  bool had_date;
+  bool same;
+  read_clock(hal, &clk);
+  if (clk.hh > 23 || clk.mm > 59) return;
+  hour = (int)clk.hh + (int)screen->tz_hours;
+  shift = 0;
+  if (hour < 0) {
+    hour += 24;
+    shift = -1;
+  } else if (hour >= 24) {
+    hour -= 24;
+    shift = 1;
+  }
+  min = hour * 60 + (int)clk.mm;
+  if (clk.year != 0 && clk.month >= 1 && clk.month <= 12 && clk.day >= 1 && clk.day <= 31) {
+    year = clk.year;
+    month = clk.month;
+    day = clk.day;
+    shift_date(&year, &month, &day, shift);
+    had_date = screen->steps_day_year != 0;
+    same = had_date && year == (int)screen->steps_day_year && month == (int)screen->steps_day_month &&
+           day == (int)screen->steps_day_mday;
+    screen->steps_day_year = (uint16_t)year;
+    screen->steps_day_month = (uint8_t)month;
+    screen->steps_day_mday = (uint8_t)day;
+    screen->steps_day_min = (uint16_t)min;
+    screen->steps_day_tz = screen->tz_hours;
+    screen->steps_day_known = true;
+    if (had_date && !same) steps_clear_today(screen);
+    else if (screen->steps_day_year_saved != screen->steps_day_year ||
+             screen->steps_day_month_saved != screen->steps_day_month ||
+             screen->steps_day_mday_saved != screen->steps_day_mday) {
+      steps_publish_day(screen);
+    }
+    return;
+  }
+  if (screen->steps_day_year != 0) {
+    screen->steps_day_min = (uint16_t)min;
+    screen->steps_day_tz = screen->tz_hours;
+    screen->steps_day_known = true;
+    return;
+  }
+  if (screen->steps_day_known && screen->steps_day_tz == screen->tz_hours &&
+      min < (int)screen->steps_day_min) {
+    screen->steps_day_min = (uint16_t)min;
+    screen->steps_day_tz = screen->tz_hours;
+    screen->steps_day_known = true;
+    steps_clear_today(screen);
+    return;
+  }
+  screen->steps_day_known = true;
+  screen->steps_day_min = (uint16_t)min;
+  screen->steps_day_tz = screen->tz_hours;
 }
 
 void screen_poll_steps(screen_t *screen, const hal_t *hal) {
@@ -1949,22 +2251,42 @@ void screen_poll_steps(screen_t *screen, const hal_t *hal) {
   int id;
   if (!screen || !hal) return;
   now = hal->now_ms(hal->ctx);
+  steps_roll_day(screen, hal);
   if (hal->accel && (!screen->step_sampled || elapsed_u32(now, screen->step_sample_ms) >= STEP_POLL_MS)) {
     screen->step_sampled = true;
     screen->step_sample_ms = now;
     if (hal->accel(hal->ctx, &sample) && step_detect(&screen->step_det, &sample, now)) {
       id = screen->beeple;
-      if (id >= 0 && id < BEEPLE_N && screen->steps[id] != UINT32_MAX) {
-        screen->steps[id]++;
-        screen->steps_last_ms = now;
-        if (!screen->steps_holding) {
-          screen->steps_holding = true;
-          screen->steps_hold_ms = now;
+      if (id >= 0 && id < BEEPLE_N) {
+        bool counted = false;
+        if (screen->steps[id] != UINT32_MAX) {
+          screen->steps[id]++;
+          counted = true;
+        }
+        if (screen->steps_today[id] != UINT32_MAX) {
+          screen->steps_today[id]++;
+          counted = true;
+        }
+        if (counted) {
+          screen->steps_last_ms = now;
+          if (!screen->steps_holding) {
+            screen->steps_holding = true;
+            screen->steps_hold_ms = now;
+          }
         }
       }
     }
   }
   steps_commit(screen, now);
+}
+
+void screen_poll_fish(screen_t *screen, const hal_t *hal) {
+  if (!screen || !hal || !fishing_playing(&screen->fish)) return;
+  if (screen->mode != SCREEN_BEEPLE) {
+    fishing_stop(&screen->fish, hal);
+    return;
+  }
+  fishing_poll(&screen->fish, hal);
 }
 
 void screen_poll_pose(screen_t *screen, const hal_t *hal) {
@@ -2084,11 +2406,28 @@ void screen_reset(screen_t *screen) {
   screen->beeple_slide_dir = 0;
   memset(screen->steps, 0, sizeof screen->steps);
   memset(screen->steps_saved, 0, sizeof screen->steps_saved);
+  memset(screen->steps_today, 0, sizeof screen->steps_today);
+  memset(screen->steps_today_saved, 0, sizeof screen->steps_today_saved);
   screen->steps_saved_ms = 0;
   screen->steps_last_ms = 0;
   screen->steps_hold_ms = 0;
   screen->steps_holding = false;
   screen->step_sampled = false;
+  screen->steps_day_known = false;
+  screen->steps_day_min = 0;
+  screen->steps_day_tz = 0;
+  screen->steps_day_year = 0;
+  screen->steps_day_month = 0;
+  screen->steps_day_mday = 0;
+  screen->steps_day_known_saved = false;
+  screen->steps_day_min_saved = 0;
+  screen->steps_day_tz_saved = 0;
+  screen->steps_day_year_saved = 0;
+  screen->steps_day_month_saved = 0;
+  screen->steps_day_mday_saved = 0;
+  screen->beeple_span = 0;
+  screen->beeple_game = 0;
+  screen->fish.phase = FISH_OFF;
   memset(&screen->step_det, 0, sizeof screen->step_det);
   display_clear(screen->buf);
 }

@@ -108,10 +108,15 @@ static uint32_t now_ms(void *ctx) {
   return r->now_ms;
 }
 
-static void clock_fn(void *ctx, uint8_t *hh, uint8_t *mm) {
+static void clock_fn(void *ctx, wall_clock_t *out) {
   emu_hal_t *r = ctx;
-  if (hh) *hh = r->hh;
-  if (mm) *mm = r->mm;
+  if (!out) return;
+  memset(out, 0, sizeof *out);
+  out->hh = r->hh;
+  out->mm = r->mm;
+  out->year = r->year;
+  out->month = r->month;
+  out->day = r->day;
 }
 
 static bool battery_fn(void *ctx, battery_t *out) {

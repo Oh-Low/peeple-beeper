@@ -11,8 +11,7 @@ static bool whisper;
 static gps_fix_t feather_fix;
 static nmea_line_t nmea;
 static bool gps_on;
-static uint8_t clock_hh;
-static uint8_t clock_mm;
+static wall_clock_t feather_clock;
 
 static void display_clear(void *ctx) {
   (void)ctx;
@@ -95,10 +94,10 @@ static uint32_t now_ms(void *ctx) {
   return board_now_ms();
 }
 
-static void clock_fn(void *ctx, uint8_t *hh, uint8_t *mm) {
+static void clock_fn(void *ctx, wall_clock_t *out) {
   (void)ctx;
-  if (hh) *hh = clock_hh;
-  if (mm) *mm = clock_mm;
+  if (!out) return;
+  *out = feather_clock;
 }
 
 static bool battery_fn(void *ctx, battery_t *out) {
@@ -151,7 +150,7 @@ static bool gps_fix_fn(void *ctx, gps_fix_t *out) {
 
 void feather_gps_push_byte(uint8_t byte) {
   gps_fix_t fix;
-  if (nmea_push_byte(&nmea, byte, &fix, &clock_hh, &clock_mm)) feather_fix = fix;
+  if (nmea_push_byte(&nmea, byte, &fix, &feather_clock)) feather_fix = fix;
 }
 
 void feather_hal_init(hal_t *out) {
@@ -160,8 +159,9 @@ void feather_hal_init(hal_t *out) {
   whisper = false;
   memset(&nmea, 0, sizeof nmea);
   memset(&feather_fix, 0, sizeof feather_fix);
-  clock_hh = 255;
-  clock_mm = 255;
+  memset(&feather_clock, 0, sizeof feather_clock);
+  feather_clock.hh = 255;
+  feather_clock.mm = 255;
   gps_on = true;
   board_init();
   out->ctx = NULL;

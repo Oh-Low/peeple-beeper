@@ -126,6 +126,13 @@ static void test_roundtrip(void) {
   a.screen.beeple = 3;
   a.screen.steps_saved[2] = 1000;
   a.screen.steps_saved[11] = 42;
+  a.screen.steps_today_saved[2] = 9;
+  a.screen.steps_day_known_saved = true;
+  a.screen.steps_day_min_saved = 600;
+  a.screen.steps_day_tz_saved = -4;
+  a.screen.steps_day_year_saved = 2026;
+  a.screen.steps_day_month_saved = 11;
+  a.screen.steps_day_mday_saved = 26;
   CHECK(store_save(&a, &hal), "save");
 
   beeper_t b;
@@ -171,6 +178,14 @@ static void test_roundtrip(void) {
   CHECK_EQ(b.screen.steps_saved[2], 1000, "saved steps match the live count");
   CHECK_EQ(b.screen.steps[11], 42, "each beeple keeps its own steps");
   CHECK_EQ(b.screen.steps[0], 0, "another beeple stays at zero");
+  CHECK_EQ(b.screen.steps_today[2], 9, "today's steps are saved");
+  CHECK_EQ(b.screen.steps_today_saved[2], 9, "saved today matches");
+  CHECK(b.screen.steps_day_known, "the day stamp is saved");
+  CHECK_EQ(b.screen.steps_day_min, 600, "the minute of the day is saved");
+  CHECK_EQ(b.screen.steps_day_tz, -4, "the day stamp uses the time zone");
+  CHECK_EQ(b.screen.steps_day_year, 2026, "the date year is saved");
+  CHECK_EQ(b.screen.steps_day_month, 11, "the date month is saved");
+  CHECK_EQ(b.screen.steps_day_mday, 26, "the date day is saved");
   pass("store roundtrip: node_id, name, contacts, canned, inbox, outbox");
 }
 
