@@ -20,6 +20,8 @@ bool display_get_pixel(const uint8_t *buf, int x, int y);
 void display_clear(uint8_t *buf);
 void display_invert_rect(uint8_t *buf, int x, int y, int w, int h);
 void display_hline(uint8_t *buf, int x, int y, int w);
+void display_draw_line(uint8_t *buf, int x0, int y0, int x1, int y1);
+void display_draw_rows(uint8_t *buf, int x, int y, const char *const *rows, int n);
 /* Shaft from (x0,y0) to (x1,y1), head at the second point. */
 void display_draw_arrow(uint8_t *buf, int x0, int y0, int x1, int y1);
 void display_draw_char(uint8_t *buf, int x, int y, uint32_t cp);

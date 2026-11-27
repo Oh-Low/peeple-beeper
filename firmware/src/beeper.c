@@ -76,6 +76,7 @@ void beeper_tick(beeper_t *b, const hal_t *hal) {
   bool track_grab = screen_poll_track(&b->screen, hal);
 
   if (!ctx.got_page && !track_grab) screen_input(&b->screen, hal);
+  screen_poll_fish_end(&b->screen, hal);
 
   screen_render(&b->screen, hal);
   store_sync(b, hal);

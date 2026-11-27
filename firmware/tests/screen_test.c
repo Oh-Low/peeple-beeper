@@ -642,6 +642,7 @@ static void test_fishing(void) {
   uint32_t wait;
   int bar, letters, y, x;
   bool differ;
+  page_t page;
   beeper_init(&b);
   emu_hal_init(&ram, &hal);
 
@@ -713,7 +714,7 @@ static void test_fishing(void) {
   screen_poll_fish(&b.screen, &hal);
   CHECK(b.screen.fish.phase == 2, "the next bite starts");
   ram.now_ms = b.screen.fish.since + 350;
-  screen_poll_fish(&b.screen, &hal);
+  screen_poll_fish_end(&b.screen, &hal);
   CHECK(b.screen.fish.phase == 1, "a missed bite returns to calm");
 
   emu_hal_push_back(&ram);
@@ -721,6 +722,23 @@ static void test_fishing(void) {
   CHECK(b.screen.fish.phase == 0 && b.screen.mode == SCREEN_BEEPLE && b.screen.beeple_page == 2 &&
             b.screen.beeple_focus == 1,
         "back returns to the games menu");
+
+  emu_hal_push_encoder(&ram, ENC_PRESS);
+  screen_input(&b.screen, &hal);
+  ram.now_ms = b.screen.fish.next;
+  screen_poll_fish(&b.screen, &hal);
+  emu_hal_push_encoder(&ram, ENC_PRESS);
+  ram.now_ms = b.screen.fish.since + 400;
+  beeper_tick(&b, &hal);
+  CHECK(b.screen.fish.phase == 3, "a click during the bite still catches when the tick is late");
+
+  fill_page(&page);
+  b.screen.mode = SCREEN_BEEPLE;
+  b.screen.fish.phase = FISH_BITE;
+  screen_on_page(&b.screen, &hal, &page);
+  screen_poll_fish(&b.screen, &hal);
+  CHECK(b.screen.fish.phase == 0 && ram.vibe_ms == 250 && b.screen.mode == SCREEN_ALERT,
+        "a page keeps its buzz");
   pass("fishing");
 }
 

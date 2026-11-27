@@ -662,7 +662,7 @@ void board_radio_send(const uint8_t *bytes, size_t len, bool whisper) {
     return;
   }
   txp[0] = 0x8E;
-  txp[1] = whisper ? 0xF7 : 14;
+  txp[1] = whisper ? 0xF7 : 21;
   txp[2] = 0x04;
   if (!radio_write(txp, 3)) {
     radio_listen();

@@ -32,6 +32,11 @@ void fishing_stop(fishing_t *fish, const hal_t *hal) {
   if (hal) hal->vibe(hal->ctx, 0);
 }
 
+void fishing_dismiss(fishing_t *fish) {
+  if (!fish) return;
+  fish->phase = FISH_OFF;
+}
+
 void fishing_press(fishing_t *fish, const hal_t *hal) {
   if (!fish || fish->phase == FISH_OFF) return;
   if (fish->phase == FISH_BITE) {
@@ -57,12 +62,14 @@ void fishing_poll(fishing_t *fish, const hal_t *hal) {
     fish->phase = FISH_BITE;
     fish->since = fish->next;
     hal->vibe(hal->ctx, (uint16_t)(FISH_BITE_MS - late));
-    return;
   }
-  if (fish->phase == FISH_BITE && elapsed_u32(now, fish->since) >= FISH_BITE_MS) {
-    hal->vibe(hal->ctx, 0);
-    fishing_start(fish, hal);
-  }
+}
+
+void fishing_expire(fishing_t *fish, const hal_t *hal) {
+  if (!fish || !hal || fish->phase != FISH_BITE) return;
+  if (elapsed_u32(hal->now_ms(hal->ctx), fish->since) < FISH_BITE_MS) return;
+  hal->vibe(hal->ctx, 0);
+  fishing_start(fish, hal);
 }
 
 static int fish_bob(uint32_t now) {
@@ -80,31 +87,13 @@ static bool fish_gap(int chunk, int salt) {
   return ((h >> 16) & 3u) == 0;
 }
 
-static void draw_fish_seg(uint8_t *buf, int x0, int y0, int x1, int y1) {
-  int dx = x1 - x0;
-  int dy = y1 - y0;
-  int sx = dx < 0 ? -1 : 1;
-  int sy = dy < 0 ? -1 : 1;
-  int err;
-  if (dx < 0) dx = -dx;
-  if (dy < 0) dy = -dy;
-  err = dx - dy;
-  for (;;) {
-    display_set_pixel(buf, x0, y0, true);
-    if (x0 == x1 && y0 == y1) break;
-    int e2 = err * 2;
-    if (e2 > -dy) {
-      err -= dy;
-      x0 += sx;
-    }
-    if (e2 < dx) {
-      err += dx;
-      y0 += sy;
-    }
-  }
+static bool fish_thick(int i, int salt) {
+  int chunk = (i + salt * 3) / 6;
+  uint32_t h = (uint32_t)chunk * 1664525u + (uint32_t)salt * 1013904223u;
+  return ((h >> 16) & 1u) == 0;
 }
 
-/* Unit superellipse (n = 3) of the calm ripples, from the side points through the bottom. */
+/* Unit superellipse, n = 3. */
 static const int8_t FISH_WAVE[] = {
     120, -70, 121, -66, 122, -62, 123, -58, 124, -54, 124, -49, 125, -45, 126, -40,
     126, -34, 127, -28, 127, -22, 127, -14, 127, 0, 127, 14, 127, 22, 127, 28,
@@ -124,7 +113,6 @@ static const int8_t FISH_WAVE[] = {
 };
 #define FISH_WAVE_N 115
 
-/* Each ripple is open at the corners and the bottom, shifted so the gaps do not line up. */
 static bool fish_open(int i, int salt) {
   int a = -24 + 2 * i - (salt & 3) * 26;
   if (a >= 22 && a <= 58) return true;
@@ -133,16 +121,28 @@ static bool fish_open(int i, int salt) {
   return false;
 }
 
+static void stroke(uint8_t *buf, int *prev, int *px, int *py, int x, int y) {
+  if (*prev) display_draw_line(buf, *px, *py, x, y);
+  else display_set_pixel(buf, x, y, true);
+  *px = x;
+  *py = y;
+  *prev = 1;
+}
+
 static void draw_fish_ring(uint8_t *buf, int cx, int cy, int rx, int ry, bool noisy, int salt) {
   int prev = 0;
   int px = 0;
   int py = 0;
+  int iprev = 0;
+  int ix = 0;
+  int iy = 0;
   for (int i = 0; i < FISH_WAVE_N; i++) {
     int jx = 0;
     int jy = 0;
     int chunk = i / 5;
     if (fish_open(i, salt) || (noisy && fish_gap(chunk, salt))) {
       prev = 0;
+      iprev = 0;
       continue;
     }
     if (noisy) {
@@ -151,11 +151,14 @@ static void draw_fish_ring(uint8_t *buf, int cx, int cy, int rx, int ry, bool no
     }
     int x = cx + (int)((int32_t)FISH_WAVE[i * 2] * rx / 127) + jx;
     int y = cy + (int)((int32_t)FISH_WAVE[i * 2 + 1] * ry / 127) + jy;
-    if (prev) draw_fish_seg(buf, px, py, x, y);
-    else display_set_pixel(buf, x, y, true);
-    px = x;
-    py = y;
-    prev = 1;
+    stroke(buf, &prev, &px, &py, x, y);
+    if (!fish_thick(i, salt)) {
+      iprev = 0;
+      continue;
+    }
+    x = cx + (int)((int32_t)FISH_WAVE[i * 2] * (rx - 1) / 127) + jx;
+    y = cy + (int)((int32_t)FISH_WAVE[i * 2 + 1] * (ry - 1) / 127) + jy;
+    stroke(buf, &iprev, &ix, &iy, x, y);
   }
 }
 
@@ -163,20 +166,8 @@ static void draw_fish_waves(uint8_t *buf, int cx, int cy, uint32_t now, bool noi
   int age = (int)((now / 90u) % 48u);
   for (int k = 0; k < 4; k++) {
     int rx = 20 + (age + k * 12) % 48;
-    int ry;
-    if (rx < 16) continue;
-    ry = rx * 5 / 12;
-    if (ry < 6) ry = 6;
+    int ry = rx * 5 / 12;
     draw_fish_ring(buf, cx, cy, rx, ry, noisy, k);
-    if (rx > 2 && ry > 2) draw_fish_ring(buf, cx, cy, rx - 1, ry - 1, noisy, k);
-  }
-}
-
-static void draw_rows(uint8_t *buf, int x, int y, const char *const *rows, int n) {
-  for (int row = 0; row < n; row++) {
-    for (int col = 0; rows[row][col]; col++) {
-      if (rows[row][col] == '#') display_set_pixel(buf, x + col, y + row, true);
-    }
   }
 }
 
@@ -212,7 +203,7 @@ static void draw_fish_bobber(uint8_t *buf, int x, int y) {
       "#.....#########################......#",
       "#..........###############...........#",
   };
-  draw_rows(buf, x, y, rows, 29);
+  display_draw_rows(buf, x, y, rows, 29);
 }
 
 static void draw_fish_line(uint8_t *buf, int bob) {

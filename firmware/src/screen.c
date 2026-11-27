@@ -374,6 +374,7 @@ static void dismiss_sent(screen_t *screen, const hal_t *hal) {
 #define BEEPLE_PAGE_GAMES 2
 #define BEEPLE_SPAN_N 2
 #define BEEPLE_GAME_N 2
+#define BEEPLE_GAME_FISHING 0
 #define BEEPLE_BODY_Y 22
 #define BEEPLE_GAME_Y 21
 #define BEEPLE_GAME_ART_Y 33
@@ -690,7 +691,8 @@ static int on_press(screen_t *screen, const hal_t *hal) {
     if (!beeple_sliding(screen, hal) && screen->beeple_focus == 0) {
       screen->beeple_focus = 1;
     } else if (!beeple_sliding(screen, hal) && screen->beeple_focus == 1 &&
-               screen->beeple_page == BEEPLE_PAGE_GAMES && screen->beeple_game == 0) {
+               screen->beeple_page == BEEPLE_PAGE_GAMES &&
+               screen->beeple_game == BEEPLE_GAME_FISHING) {
       fishing_start(&screen->fish, hal);
     }
     return NAV_STAY;
@@ -1060,11 +1062,7 @@ static void draw_marked(uint8_t *buf, int y, const char *label, bool marked) {
 }
 
 static void draw_icon(uint8_t *buf, int x, int y, const char *const *rows, int n) {
-  for (int row = 0; row < n; row++) {
-    for (int col = 0; rows[row][col]; col++) {
-      if (rows[row][col] == '#') display_set_pixel(buf, x + col, y + row, true);
-    }
-  }
+  display_draw_rows(buf, x, y, rows, n);
 }
 
 static void draw_beeple_name(uint8_t *buf, const screen_t *screen, bool marked) {
@@ -1222,7 +1220,7 @@ static void draw_beeple_game_art(uint8_t *buf, int game) {
       "#.......#.......#.....#...#............#.........#..",
       "#.......#.......#....#.....#...........#.........#..",
   };
-  if (game == 0) draw_icon(buf, 9, 33, fishing, 31);
+  if (game == BEEPLE_GAME_FISHING) draw_icon(buf, 9, 33, fishing, 31);
   else draw_icon(buf, 2, 35, farming, 29);
 }
 
@@ -1239,10 +1237,8 @@ static void draw_beeple_game_label(uint8_t *buf, int game, bool marked) {
 }
 
 static void draw_beeple_games(uint8_t *buf, const screen_t *screen) {
-  int game = screen->beeple_game;
-  if (game < 0 || game >= BEEPLE_GAME_N) game = 0;
-  draw_beeple_game_label(buf, game, screen->beeple_focus != 0);
-  draw_beeple_game_art(buf, game);
+  draw_beeple_game_label(buf, screen->beeple_game, screen->beeple_focus != 0);
+  draw_beeple_game_art(buf, screen->beeple_game);
 }
 
 static void draw_beeple_body(uint8_t *buf, const screen_t *screen, int page) {
@@ -2283,10 +2279,15 @@ void screen_poll_steps(screen_t *screen, const hal_t *hal) {
 void screen_poll_fish(screen_t *screen, const hal_t *hal) {
   if (!screen || !hal || !fishing_playing(&screen->fish)) return;
   if (screen->mode != SCREEN_BEEPLE) {
-    fishing_stop(&screen->fish, hal);
+    fishing_dismiss(&screen->fish);
     return;
   }
   fishing_poll(&screen->fish, hal);
+}
+
+void screen_poll_fish_end(screen_t *screen, const hal_t *hal) {
+  if (!screen || !hal || screen->mode != SCREEN_BEEPLE) return;
+  fishing_expire(&screen->fish, hal);
 }
 
 void screen_poll_pose(screen_t *screen, const hal_t *hal) {
@@ -2377,6 +2378,7 @@ void screen_poll_send(screen_t *screen, const hal_t *hal) {
     return;
   }
   if (screen->mode == SCREEN_SETTINGS) stop_output_tests(screen, hal);
+  if (screen->mode == SCREEN_BEEPLE && fishing_playing(&screen->fish)) fishing_stop(&screen->fish, hal);
   screen->mode = SCREEN_SENT;
 }
 

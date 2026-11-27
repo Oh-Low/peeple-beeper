@@ -168,7 +168,6 @@ typedef struct {
   bool steps_day_known_saved;
   /* 0 is today, 1 is all time. The row under Stats. */
   int8_t beeple_span;
-  /* 0 is fishing, 1 is farming. The row under Games. */
   int8_t beeple_game;
   fishing_t fish;
 } screen_t;
@@ -181,6 +180,7 @@ void screen_poll_locate(screen_t *screen);
 void screen_poll_pose(screen_t *screen, const hal_t *hal);
 void screen_poll_steps(screen_t *screen, const hal_t *hal);
 void screen_poll_fish(screen_t *screen, const hal_t *hal);
+void screen_poll_fish_end(screen_t *screen, const hal_t *hal);
 /* Returns true when a tracking prompt or warning just took the screen. */
 bool screen_poll_track(screen_t *screen, const hal_t *hal);
 void screen_on_page(screen_t *screen, const hal_t *hal, const page_t *page);

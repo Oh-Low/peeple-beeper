@@ -326,7 +326,15 @@ void display_hline(uint8_t *buf, int x, int y, int w) {
   for (int i = 0; i < w; i++) display_set_pixel(buf, x + i, y, true);
 }
 
-static void draw_line(uint8_t *buf, int x0, int y0, int x1, int y1) {
+void display_draw_rows(uint8_t *buf, int x, int y, const char *const *rows, int n) {
+  for (int row = 0; row < n; row++) {
+    for (int col = 0; rows[row][col]; col++) {
+      if (rows[row][col] == '#') display_set_pixel(buf, x + col, y + row, true);
+    }
+  }
+}
+
+void display_draw_line(uint8_t *buf, int x0, int y0, int x1, int y1) {
   int dx = x1 - x0;
   int dy = y1 - y0;
   int sx = dx < 0 ? -1 : 1;
@@ -368,7 +376,7 @@ void display_draw_arrow(uint8_t *buf, int x0, int y0, int x1, int y1) {
     display_set_pixel(buf, x1, y1, true);
     return;
   }
-  draw_line(buf, x0, y0, x1, y1);
+  display_draw_line(buf, x0, y0, x1, y1);
   int head = mag / 3;
   if (head < 4) head = 4;
   if (head > 9) head = 9;
@@ -382,8 +390,8 @@ void display_draw_arrow(uint8_t *buf, int x0, int y0, int x1, int y1) {
     if (dx == 0) px = wing;
     else py = wing;
   }
-  draw_line(buf, x1, y1, bx + px, by + py);
-  draw_line(buf, x1, y1, bx - px, by - py);
+  display_draw_line(buf, x1, y1, bx + px, by + py);
+  display_draw_line(buf, x1, y1, bx - px, by - py);
 }
 
 static void draw_glyph(uint8_t *buf, int x, int y, const uint8_t *cols, int rows) {
